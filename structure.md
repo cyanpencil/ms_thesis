@@ -8,9 +8,19 @@ Give thanks to family, prof Payer, prof Paterson, the HexHive research group, th
 Overview of the whole thesis that must fit into a single page
 
 ### 1. Introduction
-Small explaination about what are the goals of the Retrowrite project, why is it so important, why in some cases dynamic instrumentation is not enough.
+
+Problem statement: why do we need binary rewriting
+
+Challenges for binary rewriting on ARM
+
+Small explanation about what are the goals of the Retrowrite project, why is it so important, why in some cases dynamic instrumentation is not enough.
 
 General overlook on what was the status of Retrowrite before I joined, and what will be my contributions.
+
+How the challenges are addressed
+
+Short discussion of implementation and results
+
 
 ### 2. Background
 
@@ -27,9 +37,9 @@ Explain key concepts of binary rewriting.  Explain what are the problems that sp
 Give some examples of instrumentation commonly used. 
 Get more in-depth on how certain kinds of instrumentation are particularly useful for fuzzing
 
-##### 2.3.1 ASAN
+One paragraph each about ASan, fuzzing, and maybe CFI. Say what each
+instrumentation looks like and reference a paper for RW.
 
-Get more specific about ASAN, why did we chose to implement it, what advantages does it give
 
 ##### 2.4 ARM architecture
 Get into detail on what are the key differences between x86 and ARM. Give some foreshadowing on the challenges that will be faced because of ARM quirks.
@@ -39,9 +49,11 @@ Get into detail on what are the key differences between x86 and ARM. Give some f
 
 ##### 3.1 Goals
 Give a rundown of specific goals that we set ourselves at the start of the project
+Tell me the design goals here! :)
 
 ##### 3.2 System overview
 High level rundown of how retrowrite works. Explain how it is split into a single Symbolizer and multiple possible instrumentation modules
+This will be a figure and not an individual section.
 
 ##### 3.3 Symbolizer
 High level rundown of how the original x86 Symbolizer works. Explain the key challenges introduced by porting it to ARM:
@@ -52,6 +64,10 @@ High level rundown of how the original x86 Symbolizer works. Explain the key cha
 - Control flow broken by too much instrumentation (e.g. short jumps)
 - Literal pools (maybe move to only chapter 4, implementation?)
 
+These issues should be key issues mentioned at the top of this chapter. The
+symbolizer section here will then focus exclusively on ARM
+
+
 ##### 3.4 Instrumentation (ASAN)
 Explain the ASAN algorithm, the concept of shadow memory, etc.
 Explain the limitations of our binary ASAN compared to source ASAN:
@@ -59,10 +75,14 @@ Explain the limitations of our binary ASAN compared to source ASAN:
 - Checks on the stack only at the stack-frame level
 - Many more instructions instrumented because of lack of source code
 
+This may be its own section
+
+
 ### 4. Implementation
 
 ##### 4.1 Symbolizer
 Go into the nitty-gritty details of my horrible hackish implementation, yay!
+
 ##### 4.1.1 Global variables
 - How were they detected
 - How were they fixed 
@@ -94,7 +114,7 @@ Explain how much do I hate the SPEC CPU benchmark, who developed it, the crazy f
 /s
 
 ##### 5.3 Results
-Present  plots and tables, and a detailed explaination on each one.
+Present  plots and tables, and a detailed explanation on each one.
 Make sure to respect the style of Mathias' previous papers/theses, to avoid getting him unnecessarily angry
 
 Compare it to state-of-the-art dynamic instrumentation (qemu).
@@ -102,13 +122,15 @@ Compare it to state-of-the-art dynamic instrumentation (qemu).
 
 ### 6. Related Work
 Still need to look up what's best to put here
+Other binary rewriters both static and dynamic ones. Similarly papers that
+utilize binary rewriting. Try to categorize and split up a bit
 
-### 7. Conclusion
-##### 7.1 Final remarks
-##### 7.2 Future work
+### 7. Future work
 - kRetrowrite-ARM :)
 
-### 8. Bibliography
+### 8. Conclusion
+
+### 9. Bibliography
 - The original retrowrite paper
 - Give credit to CloudLab for letting me use their mega computers
 
