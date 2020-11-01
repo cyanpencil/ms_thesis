@@ -1,43 +1,121 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% EPFL report package, main thesis file
-% Goal: provide formatting for theses and project reports
-% Author: Mathias Payer <mathias.payer@epfl.ch>
+% EPFL report package, main thesis file Goal: provide formatting for theses and
+% project reports Author: Mathias Payer <mathias.payer@epfl.ch>
 %
-% This work may be distributed and/or modified under the
-% conditions of the LaTeX Project Public License, either version 1.3
-% of this license or (at your option) any later version.
-% The latest version of this license is in
-%   http://www.latex-project.org/lppl.txt
+% This work may be distributed and/or modified under the conditions of the
+% LaTeX Project Public License, either version 1.3 of this license or (at your
+% option) any later version.  The latest version of this license is in
+% http://www.latex-project.org/lppl.txt
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% useful links:
+% REPICA: https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8454360
+%         good state of the art overview, both ARM64 and arm32
+%         1. do not use symbolization, but relative address correction
+%         2. Detect jump tables and global pointers, but not fix them
+%         3. Overhead is exactly the same as retrowrite
+
+
+%\pdfcompresslevel=0 \pdfobjcompresslevel=0
+
 \documentclass[a4paper,11pt,oneside]{report}
-% Options: MScThesis, BScThesis, MScProject, BScProject
-\usepackage[MScThesis,lablogo]{EPFLreport}
-\usepackage{xspace}
+\usepackage[MScThesis,lablogo]{EPFLreport} \usepackage{xspace}
+\usepackage{xcolor} \usepackage{soul}
 
-\title{A wonderful thesis\\about the merits of scientific writing}
-\author{The Student}
-\supervisor{The Doctoral Student}
-\adviser{Prof. Dr. sc. ETH Mathias Payer}
-%\coadviser{Second Adviser}
-\expert{The External Reviewer}
 
-\newcommand{\sysname}{FooSystem\xspace}
+\title{Arm Wrestling: porting the Retrowrite project to the ARM architecture}
+\author{Luca Di Bartolomeo} \adviser{Prof. Mathias Payer (EPFL)}
+\supervisor{Prof. Kenny Paterson (ETH)}
 
-\begin{document}
-\maketitle
-\makededication
-\makeacks
+\linespread{1.5} 
+\newcommand{\sysname}{Retrowrite\xspace}
+
+%\definecolor{orange}{rgb}{1,0.5,0}
+%\newcommand{\todo}[1]{\colorbox{cyan}{\parbox{0.9\textwidth}{#1}}}
+\newcommand{\todo}[1]{%
+	\begingroup 
+	\sethlcolor{cyan}%
+	\hl{TODO: #1}%
+	\endgroup
+}
+
+
+\dedication{ 
+\begin{raggedleft}
+	No matter where you go, everyone is connected.\\
+	--- Serial Experiments Lain\\
+\end{raggedleft} 
+\vspace{4cm} 
+\begin{center}
+	Dedicated to my parents, my sister Sara, my dear Giulia, to my friends back 
+	in Rome and to my roommates Matteo and Filippo who all inspired me and kept 
+	up with my constant complaining. Thanks!
+\end{center} 
+}
+
+\acknowledgments{
+	I would like to thank my advisor, Prof. Mathias Payer, for his support,
+	guidance, and for trusting me by assigning me this inspiring project.  I
+	admire him a lot and I wish all the best for him, and in particular I hope
+	that I can work on many other projects with him.
+	
+	I would also like to thank his research group, HexHive, as I always found
+	myself very welcome there, even if I could visit them once a week. Those
+	have been six very happy months in which I learned quite a lot of things,
+	and I have to thank prof. Payer and his doctorate students and researches
+	for it.  I wish them all to have a very succesfull career, and I hope we
+	can continue to work together in the future!
+	
+	Special thanks goes to my family and my friends in Rome. Their support was
+	always available, and it has always been a huge pleasure to visit them once
+	in a while in Italy. I also need to thank my S.O. Giulia, I felt she was
+	always behind my back, keeping a good check on my mental sanity during the
+	worst times of the outbreak. My roommates too, Matteo and Filippo, deserve
+	a mention here, as their patience and their rubber duck debugging skills
+	proved to be fundamental during some nasty debugging sessions.
+}
+
+\begin{document} \maketitle \makededication \makeacks
+
 
 \begin{abstract}
-The \sysname tool enables lateral decomposition of a multi-dimensional
-flux compensator along the timing and space axes.
 
-The abstract serves as an executive summary of your project.
-Your abstract should cover at least the following topics, 1-2 sentences for
-each: what area you are in, the problem you focus on, why existing work is
-insufficient, what the high-level intuition of your work is, maybe a neat
-design or implementation decision, and key results of your evaluation.
+	While there were good recent attemps, (\todo{link to PinePhone, System76,
+	and similar projects}) using only open-source software is particularly
+	hard, and especially on the mobile phone market even the most determined
+	users are often forced to use closed-source ARM libraries or modules.  
+	Those often run at privileges higher than we might want (e.g. manufacturer
+	specific kernel modules, \todo{link to some}), and are also hard to audit
+	for their vulnerabilities. 
+
+	Many existing tools were developed to improve the auditability of closed
+	source programs, especially aimed at helping the fuzzing process, with
+	approaches such as implementing AddressSanitizer (a compiler pass only
+	available with the source code) through dynamic instrumentation, but even
+	state-of-the-art instrumentation engines incur in prohibitive runtime
+	overhead (10x and more). 
+
+	In this thesis, we would like to show that static instrumentation for ARM 
+	binaries is a viable alternative to existing approaches, that has less 
+	flexibility (only works on C, position independent binaries) but has
+	negligible overhead compared to compiled source code. We present the ARM
+	port of \texttt{Retrowrite}, an existing static binary rewriter for x86
+	executables, which implements the symbolization engine and the memory
+	sanitization instrumentation. 
+
+	While \texttt{Retrowrite} is not the only binary rewriter for x86, there 
+	are very few that are aimed at the ARM64 architecture. In particular, 
+	almost none of them avoid lifting to an intermediate IR, 
+
+
+
+
+
+
+
+
 \end{abstract}
 
 \begin{frenchabstract}
@@ -111,15 +189,81 @@ This section is usually 5-10 pages.
 \chapter{Related Work}
 %%%%%%%%%%%%%%%%%%%%%%
 
-The related work section covers closely related work. Here you can highlight
-the related work, how it solved the problem, and why it solved a different
-problem. Do not play down the importance of related work, all of these
-systems have been published and evaluated! Say what is different and how
-you overcome some of the weaknesses of related work by discussing the 
-trade-offs. Stay positive!
+%The related work section covers closely related work. Here you can highlight
+%the related work, how it solved the problem, and why it solved a different
+%problem. Do not play down the importance of related work, all of these
+%systems have been published and evaluated! Say what is different and how
+%you overcome some of the weaknesses of related work by discussing the 
+%trade-offs. Stay positive!
+%This section is usually 3-5 pages.
 
-This section is usually 3-5 pages.
 
+% useful links:
+% REPICA: https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8454360
+%         good state of the art overview, both ARM64 and arm32
+%         1. do not use symbolization, but relative address correction
+%         2. Detect jump tables and global pointers, but not fix them
+%         3. Overhead is exactly the same as retrowrite
+% A SURVEY ON BINARY REWRITING: https://publications.sba-research.org/publications/201906%20-%20GMerzdovnik%20-%20From%20hack%20to%20elaborate%20technique.pdf
+
+\todo{This section now has only list of related work I would like to talk 
+about, will be expanded later}
+
+\texttt{Retrowrite} \cite{dinesh20oakland}, obviously
+
+
+\texttt{Repica} \cite{repica} is probably the most recent addition to binary rewriters aimed 
+at ARM binaries.  
+
+\texttt{DynInst}\cite{dyninst} and more recently \texttt{Multiverse} 
+\cite{multiverse} are  famous dynamic instrumentation engines
+
+\texttt{Uroboros}\cite{uroboros} and \texttt{Ramblr}\cite{ramblr} are the first 
+reassembable assembly approaches (symbolization)
+
+For more you should check recent surveys on the area of binary rewriting 
+\cite{binaryrewritingsurvey}
+
+
+%%%%%%%%%%%%%%%%%%%%%
+\chapter{Future Work}
+%%%%%%%%%%%%%%%%%%%%%
+
+{
+
+\setlength{\parindent}{0cm}
+\hangindent=0.7cm \textbf{Support for more source languages}: For now, 
+\texttt{Retrowrite} supports only binaries compiled from the C language, both 
+for the x86 and the ARM implementation. The easiest addition would be to add 
+support for C++ by expanding the analysis capabilities of \texttt{Retrowrite} 
+to support exception tables too, but many more languages could be supported in 
+the future. 
+
+\hangindent=0.7cm \textbf{Support for kernel space binaries}: Right now the ARM 
+port of \texttt{Retrowrite} supports only userspace binaries, contrary to the 
+x86 version that supports linux kernel modules too. The kernel version of 
+\texttt{Retrowrite\_ARM} would prove to be particularly interesting as it would 
+open new ways to efficiently fuzz Android kernel modules.
+
+\hangindent=0.7cm \textbf{Support for more executable formats/operating 
+systems}: The current implementation of the \texttt{Retrowrite} tool is aimed 
+only towards ELF files, but adding support for MACH-O and PE binaries should 
+not require too much effort. This would also be interesting as Windows and 
+MacOS present way more closed-source modules compared to Linux.
+
+\hangindent=0.7cm \textbf{More instrumentation passes}: While right now we 
+implemented only the AddressSanitizer instrumentation in the ARM port of
+\texttt{Retrowrite}, the design of \texttt{Retrowrite} is modular to make
+adding new instrumentation passes or new mitigations very easy for anyone. To
+name a few, the interesting ones would be:
+\begin{itemize}
+	\item Shadow stack (return address protection)
+	\item ARM pointer authentication (hardware-assisted)
+	\item Control flow authentication
+	\item Coverage-guidance for fuzzing
+\end{itemize}
+
+}
 
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Conclusion}
@@ -131,6 +275,7 @@ advances the status quo.
 
 \cleardoublepage
 \phantomsection
+
 \addcontentsline{toc}{chapter}{Bibliography}
 \printbibliography
 
@@ -142,11 +287,5 @@ advances the status quo.
 %
 % In case you ever need an (optional) appendix.
 %
-% You need the following items:
-% \begin{itemize}
-% \item A box
-% \item Crayons
-% \item A self-aware 5-year old
-% \end{itemize}
 
 \end{document}
