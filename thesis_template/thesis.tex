@@ -22,7 +22,9 @@
 
 \documentclass[a4paper,11pt,oneside]{report}
 \usepackage[MScThesis,lablogo]{EPFLreport} \usepackage{xspace}
-\usepackage{xcolor} \usepackage{soul}
+\usepackage{xcolor} 
+\usepackage{soul}
+\usepackage{hyperref} 
 
 
 \title{Arm Wrestling: porting the Retrowrite project to the ARM architecture}
@@ -64,9 +66,9 @@
 	I would also like to thank his research group, HexHive, as I always found
 	myself very welcome there, even if I could visit them once a week. Those
 	have been six very happy months in which I learned quite a lot of things,
-	and I have to thank prof. Payer and his doctorate students and researches
-	for it.  I wish them all to have a very succesfull career, and I hope we
-	can continue to work together in the future!
+	and I have to thank prof. Prof. Payer and his doctorate students and 
+	researches for it. I wish them all to have a very succesfull career, and I 
+	hope we can continue to work together in the future!
 	
 	Special thanks goes to my family and my friends in Rome. Their support was
 	always available, and it has always been a huge pleasure to visit them once
@@ -75,6 +77,12 @@
 	worst times of the outbreak. My roommates too, Matteo and Filippo, deserve
 	a mention here, as their patience and their rubber duck debugging skills
 	proved to be fundamental during some nasty debugging sessions.
+
+	Finally, I would also like to mention my CTF team, Flagbot, that made me 
+	spend so many weekends without going out but ultimately lead me to meet so 
+	many new interesting people, and the teams I had played with occasionally, 
+	namely polyglots and TRX. Thanks!
+
 }
 
 \begin{document} \maketitle \makededication \makeacks
@@ -97,9 +105,9 @@
 	state-of-the-art instrumentation engines incur in prohibitive runtime
 	overhead (10x and more). 
 
-	In this thesis, we would like to show that static instrumentation for ARM 
-	binaries is a viable alternative to existing approaches, that has less 
-	flexibility (only works on C, position independent binaries) but has
+	In this thesis, we would like to show that symbolization for ARM binaries 
+	is a viable alternative to existing approaches, that has less flexibility 
+	(only works on C, position independent binaries) but has
 	negligible overhead compared to compiled source code. We present the ARM
 	port of \texttt{Retrowrite}, an existing static binary rewriter for x86
 	executables, which implements the symbolization engine and the memory
@@ -112,7 +120,6 @@
 	approaches like trampolines which make the whole problem much easier but 
 	also introduce a noticeable overhead.
 
-	\texttt{Retrowrite} 
 
 \end{abstract}
 
@@ -133,6 +140,139 @@
 %The eights paragraph discusses your core contribution.
 %This section is usually 3-5 pages.
 
+% First paragraph: the setting
+Security researchers routinely find vulnerabilities in major desktop OSes, but 
+recently a lot of focus has shifted on the analysis of mobile operating 
+systems, including Android.  More than 40 CVEs for Android were published just 
+in December of 2019 
+(\footnote{\url{https://source.android.com/security/bulletin/2019-12-01}}).  
+This big focus on the analysis of Android has certainly a lot to do on with the 
+rise of the mobile phone market in the latest years, but also with the fact 
+that the source code of Android is (mostly) open and available for everyone to 
+dig through and debug.
+
+But digging through the code is not the only way of auditing a codebase, in 
+fact a very effective technique as of today is the process of \emph{fuzzing}.  
+It is taking a lot of traction because setting up a fuzzing campaign, even a 
+large scale one, is relatively easy for beginners too. The main advantages of 
+fuzzing compared to other automatic vulnerability discovery is that you do not
+need to have a deep knowledge of the fuzzer engine to have a successful run, 
+you just need to select the initial input seed corpus, and implement a fuzzing 
+harness. Moreover, the approach is extremely easy to parallelize, so it is not 
+uncommon for companies to setup large server farms with thousands of CPU cores 
+just dedicated to fuzzing.
+
+Having the source code available while fuzzing immensely helps the fuzzer 
+engine thanks to coverage information, that can prune inputs much more 
+accurately compared to \emph{black-box} fuzzing without the source code.  
+Furthermore, the presence of source code gives the opportunity to apply one or 
+more instrumentation passes to the binary, which can help the fuzzer even more, 
+For instance, memory sanitization helps the fuzzer find memory corruption bugs 
+as soon as they are introduced without needing to wait for a crash. 
+
+Unfortunately, in spite of the increasing popularity of open source software, 
+closed source modules and binaries are still much more common: on desktop, 90\% 
+of the operating systems are closed source, and even who runs an open-source 
+alternative usually still has many closed source components (e.g., Skype, 
+NVidia drivers, various DRM components in browsers, etc.). This holds true even 
+in the phone market: while 75\% \footnote{\url{
+https://www.statista.com/statistics/272698/global-market-share-held-by-mobile-operating-systems-since-2009/}}
+of mobile users use Android or other open-source operating systems, virtually 
+all of those devices have proprietary components already installed at the 
+moment of purchase. Most commonly there are Google proprietary libraries like 
+the Play API, manufacturer custom modules and firmwares (for hardware 
+peripherals such as bluetooth or WWAN connectivity), and much more. In many 
+instances, those closed-source modules are installed as kernel modules or run 
+with root privileges, and they are exposed to the network, creating 
+opportunities for malware or other bad actors to take control of mobile 
+devices.
+
+When talking about fuzzing closed source binaries, the main difficulties that 
+arise are due to the fact that the compilation process discards a large amount 
+of information that could be very useful while hunting bugs, such as type 
+information, control flow, array boundaries, scalars/pointers distinction, and 
+much more.  Still, there are techniques that can help instrument a binary and 
+fuzz it in those conditions, and they all fall into a common category called 
+\emph{Binary rewriting}.
+
+Binary rewriting techniques can be divided into two main approaches: 
+\emph{dynamic} rewriting and \emph{static} rewriting. Dynamic rewriting 
+involves running the target binary in a controlled execution alongside the 
+rewriter engine, which instruments the target binary on the fly. The advantage 
+of this approach is that at runtime the rewriter is able to recover some of the 
+information that was lost during compilation (the most important one being the 
+distinction between scalars and references), and so do not need to rely on 
+heuristics, and can support a very wide variety of binaries (even packed or 
+self-modifying binaries). However, the tradeoff is the overhead introduced in 
+the process: dynamic rewriters usually have between 10x and 100x of overhead 
+\cite{dinesh20oakland}, which has a great impact on fuzzing performance. 
+
+On the other hand, static rewriting is the opposite approach: instrument the 
+target binary ahead of time, using various techniques to recover as much 
+information as possible from the code (including heuristics). Flexibility of 
+static rewriters is more limited, as virtually none of them support edge cases 
+such as self-modifying binaries, code that does not support standard control 
+flow practices (like OCaml or Haskell binaries), or even code generated by a 
+non-popular compiler. However, the overhead introduced by static rewriting has 
+generally low overhead, and moreover it can support more complex 
+instrumentation passes (dynamic rewriters need to keep it simple for 
+performance constraints). 
+
+Since static rewriters have much less flexibility, the aim of this thesis is to 
+expand the domain of supported binaries of one of the recently published static 
+rewriters, Retrowrite, by Dinesh et al. \cite{dinesh20oakland}. Retrowrite uses 
+the relatively new approach of \emph{symbolization}, that produces 
+reassemblable assembly on which instrumentation passes may be applied to.  
+Retrowrite focuses on position-independent binaries to eliminate the problem of 
+distinguishing between scalars and pointers, and manages to produce 
+reassemblable assembly without the usage of heuristics. 
+
+Retrowrite supports only x86\_64 binaries in both user and kernel space; 
+however, most mobile devices are running on an ARM CPU, and also some new 
+desktop devices like the latest MacBook are switching to ARM. In this thesis we 
+will explain our efforts to add support for userland ARM64 binaries, with the 
+goal that one day we will be able to fuzz Android modules and closed source 
+components. Furthermore, we will also explain how we ported to ARM the original 
+instrumentation pass that the authors of Retrowrite implemented, 
+AddressSanitizer, as a proof of concept to show the usefulness of the 
+symbolization approach. To the best of our knowledge, there were no previous 
+attempts at statically introducing memory sanitization to ARM binaries in the 
+past. 
+
+We will show through benchmarks how the overhead of Retrowrite's 
+instrumentation is very low when compared to source based instrumentation, and 
+much lower than state-of-the-art dynamic instrumentation. In our experiments, 
+we find that we are xx\% slower than source based instrumentation, and xx\% 
+faster than state-of-the-art dynamic instrumentation.
+
+Our core contributions consist in solving many challenges that static rewriting 
+ARM binaries present, mostly spawning from the fact that ARM is a fixed size 
+instruction set, in which pointers need to be built in multiple instructions, 
+or located in memory in a special region called a literal pool. A series of new 
+problems like jump table size fixing arise from this, and in fact the number of 
+static rewriters for ARM binaries is very limited, and some of those problems 
+were never encountered before. We present our approach to fix or workaround 
+most of those problems, and will give pointers to a few alternative solutions 
+we analyzed.
+
+We then evaluate our ARM port of Retrowrite , discuss its limitations, discuss 
+related work, and present our conclusions.
+
+
+
+
+% Second paragraph: main challenge
+
+% Third paragraph: related work is insufficient, and why
+
+% Fourth+Fifth paragraph: our approach, why is it needed
+
+% Sixth paragraph: thesis statement (single sentence?)
+
+% Seventh paragraph: highlight of results
+
+% Eight paragraph: our core contribution
+
 \todo{}
 
 %%%%%%%%%%%%%%%%%%%%
@@ -146,6 +286,36 @@
 \todo{}
 
 
+\section{Dynamic and Static Instrumentation}
+\todo{Go into detail on what are the pros/cons of each method. Explain what is 
+the current state of the art on both sides, and give some examples of each 
+method. Explain what is the reason behind Retrowrite being a static rewriter 
+and not a dynamic one.}
+
+
+\section{Binary Rewriting}
+\todo{Explain our focus on static instrumentation *without* source code.}
+\todo{Explain key concepts of binary rewriting.  Explain what are the problems 
+that spawn from the lack of source code. }
+
+
+
+\section{Instrumentation details}
+\todo{Give some examples of instrumentation commonly used.  Get more in-depth 
+on how certain kinds of instrumentation are particularly useful for fuzzing}
+
+
+\todo{Notes from mathias:
+One paragraph each about ASan, fuzzing, and maybe CFI. Say what each
+instrumentation looks like and reference a paper for RW.}
+
+
+\section{ARM architecture}
+\todo{Get into detail on what are the key differences between x86 and ARM. Give 
+some foreshadowing on the challenges that will be faced because of ARM quirks.}
+
+
+
 %%%%%%%%%%%%%%%%
 \chapter{Design}
 %%%%%%%%%%%%%%%%
@@ -156,6 +326,61 @@
 
 \todo{}
 
+\section{Goals}
+
+\todo{Notes from Mathias: Tell me the design goals here! :)}
+
+\todo{Give a rundown of specific goals that we set ourselves at the start of 
+the project:}
+\begin{itemize}
+	\item Study the ARM architecture and the main differences from x86
+	\item Study the codebase of the retrowrite project, understand the theory 
+		behind it and its implementation
+	\item Write tests to ensure the robustness of the implementation
+	\item Implement and introduce support for ARM in the retrowrite project
+	\item Develop a sample instrumentation pass (bASAN)
+	\item Evaluate the resulting implementation against state-of-the-art 
+		techniques
+\end{itemize}
+	 
+
+\section{Key Issues}
+\todo{Introduce and explain what will be the main problems we are going to face 
+here:}
+\begin{itemize}
+	\item Alignment issues
+	\item Global variables (!)
+	\item Jump tables (!!)
+	\item Control flow broken by too much instrumentation (e.g. short jumps)
+	\item Literal pools (maybe move to only chapter 4, implementation?)
+\end{itemize}
+
+
+\section{Symbolizer}
+\todo{Add a figure for the system overview here, with a short explaination on 
+how it is split into a single Symbolizer and mutiple possible instrumentation 
+modules}
+
+\todo{High level rundown of how the original x86 Symbolizer works.
+Explain how we approached the symbolizer key issues mentioned above here.}
+
+
+
+
+\section{Instrumentation (ASAN)}
+\todo{Explain the ASAN algorithm, the concept of shadow memory, etc.
+Explain the limitations of our binary ASAN compared to source ASAN:}
+\begin{itemize}
+	\item No checks on global variables
+	\item Checks on the stack only at the stack-frame level
+	\item Many more instructions instrumented because of lack of source code
+\end{itemize}
+
+
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Implementation}
@@ -165,6 +390,36 @@
 %you wrote but covers the implementation aspects of the projects.
 
 %This section is usually 3-5 pages.
+
+
+\section{Symbolizer}
+\todo{Go into the nitty-gritty details of my horrible hackish implementation, }
+
+\subsection{Global variables}
+\todo{}
+\subsubsection{How were they detected}
+\subsubsection{How were they fixed}
+\subsubsection{The literal pool dilemma}
+
+\subsection{Jump Tables}
+\subsubsection{How were they detected}
+\todo{Pseudo-emulating ARM binaries to detect jump tables}
+\subsubsection{How were they fixed}
+\todo{Explain the following:}
+\begin{itemize}
+	\item List all ideas we had
+	\item Explain why we chose to implement the ungodly hack of expanding them 
+	\item also, nop padding between cases
+\end{itemize}
+
+\section{ASAN instrumentation}
+\todo{Overview of the ASAN algorithm, how it was hand-translated to ARM 
+assembly}
+\todo{Various optimizations that were introduced to lower instrumentation 
+overhead}
+
+
+
 
 \todo{}
 
@@ -177,7 +432,28 @@
 
 %This section is usually 5-10 pages.
 
-\todo{}
+\section{Experiment overview}
+\todo{Explain our setup, the hardware we used, what we were measuring.}
+
+\todo{Talk a bit on also the difficulties caused by the nature of the 
+benchmarks, namely very long times (up to 48 hours, and probably more now that 
+I have cloudLab :D ), very high RAM usage, and so on.}
+
+\todo{Talk a bit on how those difficulties were approached, with the very 
+strict collection of experiment metadata using github CI and the telegram bot.}
+
+\section{SPEC CPU}
+\todo{Explain how much do I hate the SPEC CPU benchmark, who developed it, the 
+crazy fact that it is the accepted state of the art method for benchmarking 
+single-core performace, how counter-intuitive their directory structure, config 
+files, and bash scripts are.  /s}
+
+\section{Results}
+\todo{Present  plots and tables, and a detailed explanation on each one.
+Make sure to respect the style of Mathias' previous papers/theses, to avoid 
+getting him unnecessarily angry}
+
+\todo{Compare it to state-of-the-art dynamic instrumentation (qemu).}
 
 
 %%%%%%%%%%%%%%%%%%%%%%
