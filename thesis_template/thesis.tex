@@ -106,83 +106,78 @@
 	sanitization instrumentation. 
 
 	While \texttt{Retrowrite} is not the only binary rewriter for x86, there 
-	are very few that are aimed at the ARM64 architecture. In particular, 
-	almost none of them avoid lifting to an intermediate IR, 
+	are very few that are aimed at the ARM64 architecture. In particular, most 
+	of them resort to lifting to an intermediate IR (achieving more flexibility 
+	but losing fine-grained control over the instrumented instructions) or use 
+	approaches like trampolines which make the whole problem much easier but 
+	also introduce a noticeable overhead.
 
-
-
-
-
-
-
+	\texttt{Retrowrite} 
 
 \end{abstract}
 
-\begin{frenchabstract}
-For a doctoral thesis, you have to provide a French translation of the
-English abstract. For other projects this is optional.
-\end{frenchabstract}
 
 \maketoc
 
 %%%%%%%%%%%%%%%%%%%%%%
 \chapter{Introduction}
 %%%%%%%%%%%%%%%%%%%%%%
+%The introduction is a longer writeup that gently eases the reader into your
+%thesis~\cite{dinesh20oakland}. Use the first paragraph to discuss the setting.
+%In the second paragraph you can introduce the main challenge that you see.
+%The third paragraph lists why related work is insufficient.
+%The fourth and fifth paragraphs discuss your approach and why it is needed.
+%The sixth paragraph will introduce your thesis statement. Think how you can
+%distill the essence of your thesis into a single sentence.
+%The seventh paragraph will highlight some of your results
+%The eights paragraph discusses your core contribution.
+%This section is usually 3-5 pages.
 
-The introduction is a longer writeup that gently eases the reader into your
-thesis~\cite{dinesh20oakland}. Use the first paragraph to discuss the setting.
-In the second paragraph you can introduce the main challenge that you see.
-The third paragraph lists why related work is insufficient.
-The fourth and fifth paragraphs discuss your approach and why it is needed.
-The sixth paragraph will introduce your thesis statement. Think how you can
-distill the essence of your thesis into a single sentence.
-The seventh paragraph will highlight some of your results
-The eights paragraph discusses your core contribution.
-
-This section is usually 3-5 pages.
+\todo{}
 
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Background}
 %%%%%%%%%%%%%%%%%%%%
+%The background section introduces the necessary background to understand your
+%work. This is not necessarily related work but technologies and dependencies
+%that must be resolved to understand your design and implementation.
+%This section is usually 3-5 pages.
 
-The background section introduces the necessary background to understand your
-work. This is not necessarily related work but technologies and dependencies
-that must be resolved to understand your design and implementation.
-
-This section is usually 3-5 pages.
+\todo{}
 
 
 %%%%%%%%%%%%%%%%
 \chapter{Design}
 %%%%%%%%%%%%%%%%
+%Introduce and discuss the design decisions that you made during this project.
+%Highlight why individual decisions are important and/or necessary. Discuss
+%how the design fits together.
+%This section is usually 5-10 pages.
 
-Introduce and discuss the design decisions that you made during this project.
-Highlight why individual decisions are important and/or necessary. Discuss
-how the design fits together.
-
-This section is usually 5-10 pages.
+\todo{}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Implementation}
 %%%%%%%%%%%%%%%%%%%%%%%%
+%The implementation covers some of the implementation details of your project.
+%This is not intended to be a low level description of every line of code that
+%you wrote but covers the implementation aspects of the projects.
 
-The implementation covers some of the implementation details of your project.
-This is not intended to be a low level description of every line of code that
-you wrote but covers the implementation aspects of the projects.
+%This section is usually 3-5 pages.
 
-This section is usually 3-5 pages.
-
+\todo{}
 
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
 %%%%%%%%%%%%%%%%%%%%
+%In the evaluation you convince the reader that your design works as intended.
+%Describe the evaluation setup, the designed experiments, and how the
+%experiments showcase the individual points you want to prove.
 
-In the evaluation you convince the reader that your design works as intended.
-Describe the evaluation setup, the designed experiments, and how the
-experiments showcase the individual points you want to prove.
+%This section is usually 5-10 pages.
 
-This section is usually 5-10 pages.
+\todo{}
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -206,24 +201,50 @@ This section is usually 5-10 pages.
 %         3. Overhead is exactly the same as retrowrite
 % A SURVEY ON BINARY REWRITING: https://publications.sba-research.org/publications/201906%20-%20GMerzdovnik%20-%20From%20hack%20to%20elaborate%20technique.pdf
 
+{
+
+\setlength{\parindent}{0cm}
+
 \todo{This section now has only list of related work I would like to talk 
 about, will be expanded later}
 
-\texttt{Retrowrite} \cite{dinesh20oakland}, obviously
 
 
-\texttt{Repica} \cite{repica} is probably the most recent addition to binary rewriters aimed 
-at ARM binaries.  
+\textbf{Dynamic rewriters in general}:\\
+First, the good ol' ones: \texttt{PIN}\cite{pin}, 
+\texttt{Valgrind}\cite{valgrind} and \texttt{DynInst}\cite{dyninst}.
 
-\texttt{DynInst}\cite{dyninst} and more recently \texttt{Multiverse} 
-\cite{multiverse} are  famous dynamic instrumentation engines
+More recently, \texttt{Multiverse} \cite{multiverse}, \texttt{Frida} and 
+\texttt{DynamorIO} are interesting examples.
 
+\texttt{QASAN}\cite{qasan} is similar to retrowrite's basan, much slower but 
+also much more portable (works on any binary supported by qemu)
+
+
+
+\textbf{Static rewriters that use lifting to IR}:\\
+\texttt{McSema} \cite{mcsema} is a great example of LLVM IR lifting approach, 
+also particularly nice as it supports C++ exceptions
+
+\textbf{Static rewriters that use trampolines}:\\
+\texttt{E9patch}\cite{e9patch} uses only trampolines, no need to recover 
+control flow, but also noticeable overhead
+
+\textbf{Static rewriters that use symbolization}:\\
 \texttt{Uroboros}\cite{uroboros} and \texttt{Ramblr}\cite{ramblr} are the first 
-reassembable assembly approaches (symbolization)
+reassembable assembly approaches (symbolization), \texttt{Retrowrite} 
+\cite{dinesh20oakland} (x86 version)
 
-For more you should check recent surveys on the area of binary rewriting 
+\textbf{Static rewriters aimed at ARM binaries}:\\
+\texttt{Repica} \cite{repica} is probably the most recent addition to binary 
+rewriters aimed at ARM binaries.  
+
+\todo{Maybe add Bistro ? } \cite{bistro}
+
+For more check out recent surveys on the area of binary rewriting 
 \cite{binaryrewritingsurvey}
 
+}
 
 %%%%%%%%%%%%%%%%%%%%%
 \chapter{Future Work}
@@ -269,9 +290,26 @@ name a few, the interesting ones would be:
 \chapter{Conclusion}
 %%%%%%%%%%%%%%%%%%%%
 
-In the conclusion you repeat the main result and finalize the discussion of
-your project. Mention the core results and why as well as how your system
-advances the status quo.
+%In the conclusion you repeat the main result and finalize the discussion of
+%your project. Mention the core results and why as well as how your system
+%advances the status quo.
+
+
+In summary, we develop the ARM architecture implementation of the 
+\texttt{Retrowrite} project, a scalable static rewriter for linux C binaries.  
+\texttt{Retrowrite} enables targeted application of static instrumentation 
+where no source code is available, such as proprietary binaries, inline 
+assembly, or code generated by a deprecated compiler.  We also present an 
+example instrumentation pass on top of the symbolization engine, 
+AddressSanitizer, particularly useful for fuzzing purposes. We present new 
+solutions to problems arising from the peculiarities of the ARM architecture 
+such as the fixed-size instruction set, global variable accesses and jump table 
+instrumentation. We show that the total overhead of the symbolization and the 
+instrumentation pass are competitive with source based AddressSanitizer.  Our 
+work shows that \texttt{Retrowrite}'s original approach is not limited to the 
+x86 architecture, but can be applied to the ARM architecture and more.
+
+
 
 \cleardoublepage
 \phantomsection
