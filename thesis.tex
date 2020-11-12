@@ -161,9 +161,9 @@ fact a very effective technique as of today is the process of \emph{fuzzing}.
 It is taking a lot of traction because setting up a fuzzing campaign, even a 
 large scale one, is relatively easy for beginners too. The main advantages of 
 fuzzing compared to other automatic vulnerability discovery techniques is that 
-you do not need to have a deep knowledge of the fuzzer engine to have a 
-successful run, you just need to select the initial input seed corpus, and 
-implement a fuzzing harness. Moreover, the approach is extremely easy to 
+it is not need to have a deep knowledge of the fuzzer engine to have a 
+successful run, it is only required to select the initial input seed corpus, 
+and implement a fuzzing harness. Moreover, the approach is extremely easy to 
 parallelize, so it is not uncommon for companies to setup large server farms 
 with thousands of CPU cores dedicated to fuzzing.
 
@@ -456,14 +456,14 @@ Retrowrite.
 	\item \emph{Fixed-size instruction set}: Contrary to x86, the ARM 
 		instructions are all of the same size, fixed to the value of 4 bytes.  
 		While this is not a problem in itself, it means that a pointer cannot 
-		fit into a single instruction. If you want to store a pointer in a 
-		register in ARM, there are two main options: the first is using a 
-		region of data where the pointer is hard-coded at compile time, called 
-		a \emph{literal pool}; the second one is building the pointer in a 
-		multi-stage fashion by using arithmetic operations.  While the first 
-		one is easier, it is also less performant, and compilers will always 
-		resort to the second when possible. This makes very hard recovering 
-		information about global variable accesses and callbacks.
+		fit into a single instruction. To store a pointer in a register in ARM, 
+		there are two main options: the first is using a region of data where 
+		the pointer is hard-coded at compile time, called a \emph{literal 
+		pool}; the second one is building the pointer in a multi-stage fashion 
+		by using arithmetic operations.  While the first one is easier, it is 
+		also less performant, and compilers will always resort to the second 
+		when possible. This makes very hard recovering information about global 
+		variable accesses and callbacks.
 	\item \emph{Jump table compression}: On x86, jump tables are stored as list 
 		of pointers in a data section (usually \texttt{.rodata}), with one 
 		pointer for each case of the jump table. Instead, on ARM, jump tables 
@@ -476,7 +476,11 @@ Retrowrite.
 		way of detecting jump tables, while on ARM they are indistinguishable 
 		from random bytes; secondly inserting too much instrumentation between 
 		cases of the same jump table could lead to the offset not fitting into 
-		a single byte anymore, and breaking the whole jump table.
+		a single byte anymore, and breaking the whole jump table. Finally, 
+		extracting the number of cases of a jump table is quite harder in ARM, 
+		since it is impossible to scan cases until an invalid pointer is found, 
+		as like stated before, jump table entries in ARM are indistinguishable 
+		from random bytes.
 	\item \emph{Discontinuities in immediates}: Some ARM instructions, like 
 		\texttt{ADD}, support having immediates as one of the operands.  
 		However, they do not accept a classical range of immediates like in 
@@ -503,29 +507,100 @@ Retrowrite.
 %how the design fits together.
 %This section is usually 5-10 pages.
 
-\todo{}
+In this section we will go over the design decisions that we made during the 
+development of the ARM version of \texttt{Retrowrite}. We will start from goals 
+that we put ourselves at the start of the project, and then follow up with the 
+key issues that we encountered caused by the quirks of the ARM architecture. We 
+will then go over the solution we adopted for those problems both in the 
+\emph{symbolization} and in the \emph{instrumentation} sides of 
+\texttt{Retrowrite}. 
 
 \section{Goals}
 
-\todo{Notes from Mathias: Tell me the design goals here! :)}
 
-\todo{Give a rundown of specific goals that we set ourselves at the start of 
-the project:}
+Our goal is to develop a platform on which it is easily possible to write 
+instrumentation passes for ARM binaries.  We identify the following 
+requirements that our solution should satisfy:
+
 \begin{itemize}
-	\item Study the ARM architecture and the main differences from x86
-	\item Study the codebase of the Retrowrite project, understand the theory 
-		behind it and its implementation
-	\item Write tests to ensure the robustness of the implementation
-	\item Implement and introduce support for ARM in the Retrowrite project
-	\item Develop a sample instrumentation pass (BASAN)
-	\item Evaluate the resulting implementation against state-of-the-art 
-		techniques
+	\item \textbf{RQ1:} The implementation should supports COTS binaries, and 
+		should scale well to large binaries.
+	\item \textbf{RQ2:} The symbolization and instrumentation processes must 
+		not hinder the intrinsic functionality of the binary being rewritten.
+	\item \textbf{RQ3:} The memory safety instrumentation pass we develop must 
+		be competitive in performance and functionality with its source-based 
+		counterpart.
+
+
 \end{itemize}
+
+%\todo{Give a rundown of specific goals that we set ourselves at the start of 
+%the project:}
+%\begin{itemize}
+	%\item Study the ARM architecture and the main differences from x86
+	%\item Study the codebase of the Retrowrite project, understand the theory 
+		%behind it and its implementation
+	%\item Write tests to ensure the robustness of the implementation
+	%\item Implement and introduce support for ARM in the Retrowrite project
+	%\item Develop a sample instrumentation pass (BASAN)
+	%\item Evaluate the resulting implementation against state-of-the-art 
+		%techniques
+%\end{itemize}
 	 
 
 \section{Key Issues}
-\todo{Introduce and explain what will be the main problems we are going to face 
-here:}
+We will now go over the issues we encountered while porting \texttt{Retrowrite} 
+to the ARM architecture that we briefly mentioned in the previous chapter.  
+
+\subsection{Fixed size instruction set}
+The Aarch64 instruction set is defined as \emph{fixed size}, because every 
+instruction is large exactly 4 bytes. This makes the CPU design simpler,
+helps keeping memory always aligned, and permits the CPU to fetch multiple 
+instructions at once, since decoding is not necessary to determine instruction 
+boundaries. However, despite the many advantages of this characteristic, there 
+are some drawbacks too, including not being able to store a pointer in a single 
+instruction (as pointers have a size of 8 bytes). The Aarch64 ISA provides two 
+main solutions to this problem. 
+
+The first one consists in storing the pointers in a special read-only region of 
+memory, called a \emph{literal pool}, and then load those pointers into a 
+registers using the special construct \texttt{ldr <reg>, =pointer}, a 
+pseudo-instruction that the assembler will translate with the correct memory 
+address once \texttt{pointer} has been stored in a literal pool.  Since all 
+\emph{ldr} instructions are PC-relative, and since there are 21 bits available 
+to store the offset from the PC, the assembler will store \emph{pointer} in a 
+literal pool which is in the $\pm$ 1MB range of the \texttt{ldr} instruction.  
+While this is a simple and straightforward approach, very useful in the case of 
+hand-written assembly, this requires an additional memory access that may 
+impact performance in the long run. Furthermore, the assembly will fail if it 
+is not possible to store a literal pool in the given range, such as in the case 
+of a function larger than 2MB. In that case, it is up to the programmer to find 
+a suitable spot for the literal pool, by manually specifying its location with 
+the \texttt{.ltorg} assembly directive. It is often recommended to store 
+literal pools directly after non-conditional jumps to avoid executing over them 
+\cite{literalpools}.
+
+The second solution is to build pointers using multiple instructions and basic 
+arithmetic primitives. Aarch64 offers instructions such as \texttt{adrp <reg>, 
+pointer}, which loads the base page of a pointer into a register. It is a 
+PC-relative instruction too, and is able to target pointers in the $\pm$ 4GB 
+range. In other words, the \texttt{adrp} instruction can point only to memory 
+locations that are 4KB aligned. However the instruction can be followed by an 
+\texttt{add}, a \texttt{sub} or even an offset-based load such as \texttt{ldr 
+<register>, [<base\_page>, offset]}. This second way, while more contrived and 
+certainly harder to read, is actually faster than the first one, as it does not 
+require a memory access, and also often benefits from custom hardware 
+optimizations (such as in the Cortex A72, one of the most common ARM CPUs 
+\cite{pointeroptimizations}). 
+
+\subsubsection{The global variable problem}
+For the reasons stated above, compilers generally use the second options, 
+preferring performance over assembly readability. This spawns a huge set of 
+problems, in particular:  \todo{finish here}
+
+\subsection{Jump Tables}
+
+
 \begin{itemize}
 	\item Alignment issues
 	\item Global variables (!)
