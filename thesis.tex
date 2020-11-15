@@ -24,7 +24,33 @@
 \usepackage[MScThesis,lablogo]{EPFLreport} \usepackage{xspace}
 \usepackage{xcolor} 
 \usepackage{soul}
-\usepackage{hyperref} 
+\usepackage{hyperref}
+\usepackage{listings} 
+
+\definecolor{lgray}{rgb}{0.92,0.92,0.92}
+
+\lstset{ %
+  language=[x86masm]Assembler,    
+  framexleftmargin=5pt,
+  framexrightmargin=5pt,
+  %framesep=100pt,
+  basicstyle=\large,      
+  numbers=left,                  
+  numberstyle=\small\color{gray},  
+  numbersep=15pt,
+  stepnumber=1,                   
+  backgroundcolor=\color{lgray},  
+  tabsize=4,                      
+  captionpos=b,                   
+  breaklines=true,               
+  breakatwhitespace=false,      
+  title=\lstname,              
+  keywordstyle=\color{blue},     
+  commentstyle=\color{dkgreen}, 
+  stringstyle=\color{mauve},   
+  escapeinside={\%*}{*)},     
+  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb}
+}
 
 
 \title{Arm Wrestling: porting the Retrowrite project to the ARM architecture}
@@ -32,9 +58,8 @@
 \supervisor{Prof. Kenny Paterson (ETH)}
 
 \linespread{1.5} 
-\newcommand{\sysname}{Retrowrite\xspace}
+\newcommand{\sysname}{RetroWrite\xspace}
 
-%\definecolor{orange}{rgb}{1,0.5,0}
 %\newcommand{\todo}[1]{\colorbox{cyan}{\parbox{0.9\textwidth}{#1}}}
 \newcommand{\todo}[1]{%
 	\begingroup 
@@ -112,13 +137,13 @@
 	is a viable alternative to existing approaches, that has less flexibility 
 	(only works on C, position independent binaries) but has
 	negligible overhead compared to compiled source code. We present the ARM
-	port of \texttt{Retrowrite}, an existing static binary rewriter for x86
+	port of \sysname, an existing static binary rewriter for \texttt{x86}
 	executables, which implements the symbolization engine and the memory
 	sanitization instrumentation. 
 
-	While \texttt{Retrowrite} is not the only binary rewriter for x86, there 
-	are very few that are aimed at the ARM64 architecture. In particular, most 
-	of them resort to lifting to an intermediate IR (achieving more flexibility 
+	While \sysname is not the only binary rewriter for \texttt{x86}, there are 
+	very few that are aimed at the ARM64 architecture. In particular, most of 
+	them resort to lifting to an intermediate IR (achieving more flexibility 
 	but losing fine-grained control over the instrumented instructions) or use 
 	approaches like trampolines which make the whole problem much easier but 
 	also introduce a noticeable overhead.
@@ -223,26 +248,26 @@ performance constraints).
 
 Since static rewriters have much less flexibility, the aim of this thesis is to 
 expand the domain of supported binaries of one of the recently published static 
-rewriters, Retrowrite, by Dinesh et al. \cite{dinesh20oakland}. Retrowrite uses 
+rewriters, \sysname, by Dinesh et al. \cite{dinesh20oakland}. Retrowrite uses 
 the relatively new approach of \emph{symbolization}, that produces 
 reassemblable assembly on which instrumentation passes may be applied to.  
-Retrowrite focuses on position-independent binaries to eliminate the problem of 
+\sysname focuses on position-independent binaries to eliminate the problem of 
 distinguishing between scalars and pointers, and manages to produce 
 reassemblable assembly without the usage of heuristics. 
 
-Retrowrite supports only x86\_64 binaries in both user and kernel space; 
-however, most mobile devices are running on an ARM CPU, and also some new 
-desktop devices like the latest MacBook are switching to ARM. In this thesis we 
-will explain our efforts to add support for userland ARM64 binaries, with the 
-goal that one day we will be able to fuzz Android modules and closed source 
-components. Furthermore, we will also explain how we ported to ARM the original 
-instrumentation pass that the authors of Retrowrite implemented, 
+\sysname supports only \texttt{x86\_64} binaries in both user and kernel 
+space; however, most mobile devices are running on an ARM CPU, and also some 
+new desktop devices like the latest MacBook are switching to ARM. In this 
+thesis we will explain our efforts to add support for userland ARM64 binaries, 
+with the goal that one day we will be able to fuzz Android modules and closed 
+source components. Furthermore, we will also explain how we ported to ARM the 
+original instrumentation pass that the authors of \sysname implemented, 
 \emph{AddressSanitizer}, as a proof of concept to show the usefulness of the 
 symbolization approach. To the best of our knowledge, there were no previous 
 attempts at statically introducing memory sanitization to ARM binaries in the 
 past. 
 
-We will show through benchmarks how the overhead of Retrowrite's 
+We will show through benchmarks how the overhead of \sysname's 
 instrumentation is very low when compared to source based instrumentation, and 
 much lower than state-of-the-art dynamic instrumentation. In our experiments, 
 we find that we are \todo{xx\%} slower than source based instrumentation, and 
@@ -258,7 +283,7 @@ knowledge, some of those problems were never analyzed before.  We present our
 approach to fix or workaround most of those problems, and will give pointers to 
 a few alternative solutions we analyzed.
 
-We then evaluate our ARM port of Retrowrite , discuss its limitations, discuss 
+We then evaluate our ARM port of \sysname , discuss its limitations, discuss 
 related work, and present our conclusions.
 
 
@@ -285,7 +310,7 @@ related work, and present our conclusions.
 %This section is usually 3-5 pages.
 
 Here we will provide a summary of the basic notions required to understand the 
-underlying concepts behind Retrowrite and the problems we faced while porting 
+underlying concepts behind \sysname and the problems we faced while porting 
 it to the ARM architecture. 
 
 \section{Binary Rewriting}
@@ -317,7 +342,7 @@ multiple and can be summarized as follows:
 		vendor support, or deprecated build tools, could make the use of binary 
 		rewriting necessary to introduce security measures such as the 
 		insertion of stack canaries (e.g., Stackguard \cite{stackguard}) or 
-		memory sanitization (e.g., Retrowrite \cite{dinesh20oakland}).
+		memory sanitization (e.g., \sysname \cite{dinesh20oakland}).
 	
 \end{itemize}
 
@@ -379,15 +404,14 @@ binaries or self-modifying code. Moreover, many rewriters struggle with
 binaries produced by deprecated compilers or with aggressive optimization 
 flags. 
 
-More recent static rewriters such as \texttt{Ramblr} \cite{ramblr}, 
-\texttt{Uroboros} \cite{uroboros}, and \texttt{Retrowrite} rely on 
-\emph{symbolization} (sometimes also called \emph{reassemblable assembly}), 
-which work around the rigid structure of binaries by substituting hard coded 
-references with assembly labels, that are more flexible and can be parsed by 
-any generic off-the-shelf assembler. \texttt{Retrowrite}'s approach is 
-particularly interesting in the fact that it avoid heuristics to differentiate 
-between scalars and references by focusing on position-independent executables 
-(PIE). 
+More recent static rewriters such as \texttt{Ramblr} \cite{ramblr}, Uroboros 
+\cite{uroboros}, and \sysname rely on \emph{symbolization} (sometimes also 
+called \emph{reassemblable assembly}), which work around the rigid structure of 
+binaries by substituting hard coded references with assembly labels, that are 
+more flexible and can be parsed by any generic off-the-shelf assembler.  
+\sysname's approach is particularly interesting in the fact that it avoid 
+heuristics to differentiate between scalars and references by focusing on 
+position-independent executables (PIE). 
 
 
 
@@ -395,7 +419,7 @@ between scalars and references by focusing on position-independent executables
 In this section we will go into more detail on our particular use-case of 
 instrumentation, \emph{fuzzing}, and explain what is the basis of 
 AdressSanitizer, the instrumentation pass we implemented in the ARM port of 
-Retrowrite. 
+\sysname. 
 
 \subsection{Fuzzing}
 Automatic vulnerability discovery techniques are getting a lot of traction 
@@ -449,11 +473,11 @@ popular in C/C++ codebases.
 
 
 \section{The ARM architecture}
-We will provide a short summary of what are the main differences between x86 
-and ARM that proved to be source of non trivial problems during the porting of 
-Retrowrite.
+We will provide a short summary of what are the main differences between 
+\texttt{x86} and ARM that proved to be source of non trivial problems during 
+the porting of \sysname.
 \begin{itemize}
-	\item \emph{Fixed-size instruction set}: Contrary to x86, the ARM 
+	\item \emph{Fixed-size instruction set}: Contrary to \texttt{x86}, the ARM 
 		instructions are all of the same size, fixed to the value of 4 bytes.  
 		While this is not a problem in itself, it means that a pointer cannot 
 		fit into a single instruction. To store a pointer in a register in ARM, 
@@ -464,29 +488,30 @@ Retrowrite.
 		also less performant, and compilers will always resort to the second 
 		when possible. This makes very hard recovering information about global 
 		variable accesses and callbacks.
-	\item \emph{Jump table compression}: On x86, jump tables are stored as list 
-		of pointers in a data section (usually \texttt{.rodata}), with one 
-		pointer for each case of the jump table. Instead, on ARM, jump tables 
-		are stored as \emph{offsets from the base case}. This is because the 
-		compiler will try to compress the jump table, and in most cases a 
-		single byte is enough to indicate the offset from the base case to all 
-		other cases. This leads to problems for static rewriting because first 
-		of all jump tables are harder to detect, as on x86 scanning the data 
-		sections for arrays of valid instruction pointers was a quite reliable 
-		way of detecting jump tables, while on ARM they are indistinguishable 
-		from random bytes; secondly inserting too much instrumentation between 
-		cases of the same jump table could lead to the offset not fitting into 
-		a single byte anymore, and breaking the whole jump table. Finally, 
-		extracting the number of cases of a jump table is quite harder in ARM, 
-		since it is impossible to scan cases until an invalid pointer is found, 
-		as like stated before, jump table entries in ARM are indistinguishable 
-		from random bytes.
+	\item \emph{Jump table compression}: On \texttt{x86}, jump tables are 
+		stored as list of pointers in a data section (usually 
+		\texttt{.rodata}), with one pointer for each case of the jump table.  
+		Instead, on ARM, jump tables are stored as \emph{offsets from the base 
+		case}. This is because the compiler will try to compress the jump 
+		table, and in most cases a single byte is enough to indicate the offset 
+		from the base case to all other cases. This leads to problems for 
+		static rewriting because first of all jump tables are harder to detect, 
+		as on \texttt{x86} scanning the data sections for arrays of valid 
+		instruction pointers was a quite reliable way of detecting jump tables, 
+		while on ARM they are indistinguishable from random bytes; secondly 
+		inserting too much instrumentation between cases of the same jump table 
+		could lead to the offset not fitting into a single byte anymore, and 
+		breaking the whole jump table. Finally, extracting the number of cases 
+		of a jump table is quite harder in ARM, since it is impossible to scan 
+		cases until an invalid pointer is found, as like stated before, jump 
+		table entries in ARM are indistinguishable from random bytes.
 	\item \emph{Discontinuities in immediates}: Some ARM instructions, like 
 		\texttt{ADD}, support having immediates as one of the operands.  
 		However, they do not accept a classical range of immediates like in 
-		x86, but instead a specific set of values that may not be continuous.  
-		For example the \texttt{ADD} instruction can use only immediates that 
-		can be expressed with a value of 8 bits scaled by a \texttt{ROR} with a
+		\texttt{x86}, but instead a specific set of values that may not be 
+		continuous.  For example the \texttt{ADD} instruction can use only 
+		immediates that can be expressed with a value of 8 bits scaled by a 
+		\texttt{ROR} with a
 		4 bits value.
 	\item \emph{Not enough mature tools}: The popularity of ARM CPUs is still 
 		relatively new and the tooling is not mature enough, as in fact we 
@@ -508,12 +533,11 @@ Retrowrite.
 %This section is usually 5-10 pages.
 
 In this section we will go over the design decisions that we made during the 
-development of the ARM version of \texttt{Retrowrite}. We will start from goals 
-that we put ourselves at the start of the project, and then follow up with the 
-key issues that we encountered caused by the quirks of the ARM architecture. We 
+development of the ARM version of \sysname. We will start from goals that we 
+put ourselves at the start of the project, and then follow up with the key 
+issues that we encountered caused by the quirks of the ARM architecture. We 
 will then go over the solution we adopted for those problems both in the 
-\emph{symbolization} and in the \emph{instrumentation} sides of 
-\texttt{Retrowrite}. 
+\emph{symbolization} and in the \emph{instrumentation} sides of \sysname. 
 
 \section{Goals}
 
@@ -538,10 +562,10 @@ requirements that our solution should satisfy:
 %the project:}
 %\begin{itemize}
 	%\item Study the ARM architecture and the main differences from x86
-	%\item Study the codebase of the Retrowrite project, understand the theory 
+	%\item Study the codebase of the \sysname project, understand the theory 
 		%behind it and its implementation
 	%\item Write tests to ensure the robustness of the implementation
-	%\item Implement and introduce support for ARM in the Retrowrite project
+	%\item Implement and introduce support for ARM in the \sysname project
 	%\item Develop a sample instrumentation pass (BASAN)
 	%\item Evaluate the resulting implementation against state-of-the-art 
 		%techniques
@@ -549,8 +573,8 @@ requirements that our solution should satisfy:
 	 
 
 \section{Key Issues}
-We will now go over the issues we encountered while porting \texttt{Retrowrite} 
-to the ARM architecture that we briefly mentioned in the previous chapter.  
+We will now go over the issues we encountered while porting \sysname to the 
+ARM architecture that we briefly mentioned in the previous chapter.  
 
 \subsection{Fixed size instruction set}
 The Aarch64 instruction set is defined as \emph{fixed size}, because every 
@@ -595,19 +619,188 @@ optimizations (such as in the Cortex A72, one of the most common ARM CPUs
 
 \subsubsection{The global variable problem}
 For the reasons stated above, compilers generally use the second options, 
-preferring performance over assembly readability. This spawns a huge set of 
-problems, in particular:  \todo{finish here}
+preferring performance over assembly readability. Having each pointer value 
+separated in two different instructions makes the static analysis of a binary 
+substantially harder. Furthermore, compiler optimizations frequently exacerbate 
+the problem, by reusing parts of some pointer values to build new ones, or 
+reordering instructions around in such a way that a pointer can be built on two 
+instructions which are kylobytes away from each other. In some extreme cases, 
+by enabling the \texttt{-O3} optimizations, we found instances of pointers 
+built on two instructions that were on \emph{different functions}, due to the 
+compiler inlining a macro in the C source code. 
+
+An important factor to note is that this behaviours happens exclusively when 
+accessing \emph{global variables}, since all code pointers and local variables 
+are reachable through a single pc-relative instruction. 
+
+In the symbolization process (that will be explained in detail later), we need 
+to know the value of every pointer used in the program, in order to correct it 
+when we will add instrumentation later on. Thus we are required to develop an 
+analysis technique that lets us recover the value of every single global 
+pointer used in the binary. We will now shortly describe the ideas behind the 
+solution we implemented.
+
+\subsubsection{Our solution for the global variable problem}
+
+At first, some basic static analysis is performed on the binary, in order to 
+recover functions, control flow, basic blocks and disassembly of the 
+\texttt{.text} section. After this, we scan the disassembly for each possible 
+instance of pointer building in the binary. After analyzing common compiler 
+patterns, we found out that the \texttt{adrp} instruction (which loads the base 
+page address of a pointer) is an indicator of a \emph{possible} start of a 
+pointer building process. 
+
+After collecting all the possible instances of pointer building, the next step 
+is to find out the final pointer value of each one. This turned out to be an 
+extremely difficult task, as we soon found out that there are infinitely many 
+ways of how a pointer can be built. We implemented a pattern-matching solution 
+at the start, trying to get pointer values through common compiler patterns; 
+while we correctly found out the value of the vast majority of pointers, a 
+single mistake could make the binary crash, and our solution was not working on 
+binaries of large sizes, as we inevitably failed to parse at least one or two 
+patterns.
+
+We shifted to a different approach that fixed most of our problems: instead of 
+trying to find exact value of a pointer by pattern matching, we take the set of 
+all possible values a pointer could have and exclude impossible values until we 
+can. Over 90\% of the times, this approach leaves only a single value. The rest 
+of the times, only two or three values remain, for which we use the old 
+pattern-matching solution to understand which of those is the correct one. 
+
+This final solution scales really well, as proved by the fact that we 
+successfully rewrote very large binaries and ran them through long benchmarks 
+without them crashing or producing unintended behaviour. For more details on 
+how the exclusion algorithm works, see the next chapter, Implementation.  
+\todo{use labeling here}
+\todo{ maybe go into detail and explain the section alignment trick, and what 
+is the reason it works, that is retrowrite will never instrument data sections}
+
 
 \subsection{Jump Tables}
+There is a big difference in how jump tables in ARM are implemented compared to 
+\texttt{x86}. In fact, in \texttt{x86}, a jump table is represented through a 
+list of code pointers in the \texttt{.rodata} section. The assembly generated 
+by the compiler will simply load the pointer from the list indexed by the 
+number of the case that is going to be executed. 
+
+On ARM, things are different: jump tables are stored as a list of 
+\emph{offsets} from the base case (case number 0) in memory. The compiler 
+generates assembly that fetches the correct offset based on the case number 
+from the list in memory, adds the offset to the base case, and jumps to the 
+resulting value. Listing \ref{lst:jmptbl} shows an example of jump table access 
+in \texttt{aarch64}. The first two instructions build a global pointer to where 
+the jump table is stored in memory. In line 3 the offset to the corresponding 
+case is loaded into register \texttt{w1}, and then later added to the base case 
+\texttt{x0} on line 5. 
 
 
+\begin{lstlisting}[label={lst:jmptbl},caption={Example of a jump table in \texttt{aarch64}}]
+adrp x0, <jump_table_page_address>
+add x0, x0, <jump_table_page_offset>
+ldrb w1, [x0, w1, uxtw]
+adr x0, <base case address>
+add x0, x0, w1, sxtb 2
+br x0
+\end{lstlisting}
+
+Furthermore, jump tables in \texttt{aarch64} are complicated by the fact that 
+they are often \emph{compressed} in memory. Since they store offsets, not 
+pointers, and commonly jump table cases are very close to the base case, 
+usually compilers do not use the full 8 bytes of memory for each case (as it is 
+normal in \texttt{x86}), but will use less if possible. For instance, if all 
+offsets are less than 256, the compiler will use a single byte in memory to 
+store each case.  
+
+\subsubsection{Detection of jump tables}
+The first problem we had to face was the discovery of jump tables. While they 
+have a very distinct pattern (a load from memory, followed by some arithmetic, 
+and then an indirect jump), many other constructs share similar patterns (like 
+using a callback in a struct). We found out that a reliable way of detecting 
+them is by backward-slicing every time the disassembler encountered an indirect 
+jump, and then verifying if the value of the register used for the indirect 
+jump could be represented with an expression which could be resolved statically 
+and matched a very defined pattern (load 1/2/4 bytes from memory, load a base 
+address, add the offset and then jump to the result). 
+
+To represent the value of a register as an expression, we developed a simple
+pseudo-emulation engine that steps backwards from a given instruction, 
+following control flow and building step by step the resulting expression, 
+similar to what a dumbed-down symbolic executor would output. The 
+pseudo-emulation engine is limited, supports circa 20 instructions, as 
+emulating ARM was out of the scope of the project and we only needed it for 
+jump table detection. A detailed explanation of how it works can be found in 
+the next chapter.
+
+\subsubsection{Detection of jump tables size}
+Another problem that quickly arose from the peculiarities of ARM jump tables is 
+that it is much harder to estimate the number of cases that a jump table 
+supports, compared to \texttt{x86}. In fact, in \texttt{x86}, simple heuristics 
+such as scanning memory for contiguous sections of valid instruction pointers 
+until an invalid one is found can go a long way. However, as stated before, in 
+ARM jump tables are indistinguishable from random bytes, so it is impossible to 
+use heuristics to understand the bounds of a particular jump table in memory.
+
+We found that backward slicing is again a robust solution here too. After 
+detecting a jump table, we can identify the instruction that takes care of 
+loading the offset from memory, and from there the register that holds the 
+value of the number of the case that is going to be executed. Backward-slicing 
+until a comparison operation is performed on the register, bounding the number 
+of cases, turned out to be a very reliable solution here.  
+
+\subsubsection{Jump table offset overflow}
+Another problem spawned from how jump tables are represented in ARM comes up 
+when instrumenting a function that contains a jump table. In fact, it is very 
+likely that adding too much instrumentation inside a single case could 
+\emph{overflow} one of the offsets that stored its distance from the base case.
+Especially when maximum compression is used and offsets are stored in a single 
+byte, it is very common to overflow multiple of them even with light 
+instrumentation. 
+
+This was one of the harder problems to fix, and we considered the following 
+solutions:
 \begin{itemize}
-	\item Alignment issues
-	\item Global variables (!)
-	\item Jump tables (!!)
-	\item Control flow broken by too much instrumentation (e.g. short jumps)
-	\item Literal pools (maybe move to only chapter 4, implementation?)
+	\item Expand the jump table in memory. Enlarge the \texttt{.rodata} section 
+		and move everything to make space in memory for the expanded jump 
+		table. While possible, this would have been be a drastic change that 
+		was not scalable or easily implemented.
+	\item Create a new jump table in a new section, and patch the pointer 
+		building code at the start of the jump table access code. While this 
+		was the easiest solution to implement, we discarded it because of the 
+		additional space required and its poor scalability.
+	\item Divide all the offsets by the same constant value. Normally, all 
+		offsets of a jump table represent the distance between a case and the 
+		base case expressed in bytes divided by 4. This is because each 
+		instruction is 4 bytes long, and it would not make sense to point 
+		inside an instruction. In fact, in Listing \ref{lst:jmptbl}, line 5, we 
+		can see how the offset is shifted by 2 to the left (so multiplied by 
+		4). This is done automatically by the compiler. However, we can use the 
+		same technique the compiler uses and store offsets divided by 8, 16 or 
+		more, and changing how much the offset is shifted to the left before 
+		being used, thus enabling us to store larger differences in a single 
+		byte. 
+
+		The trade-off with this approach is that offsets can no longer point to 
+		a single instruction, but to a block of 2, 4 or more instructions, 
+		depending on how much enlargement was needed. To make sure that each 
+		offset points to the right instruction, some light \emph{nop-padding} 
+		is applied between cases to make sure that alignment is correct every 
+		time.
 \end{itemize}
+
+We ended up using the last solution, as even if it was slightly more complex to 
+implement, it would help us keep the original memory layout of the binary, 
+which is a very desirable property in binary rewriting. 
+
+\subsection{Control Flow broken by instrumentation}
+\todo{not sure where to put this subsection. Maybe delete it, it's a really 
+simple issue, maybe not worth discussing}
+When adding substantial amount of instrumentation to a binary, some pc-relative 
+branches can break, like the instruction \texttt{cbz}, which is able to jump to 
+addresses not farther than 1MB. 
+
+In this cases we fix the relevant instruction by making them point to a some 
+additional instrumentation containing a trampoline to the original target of 
+the branch. 
 
 
 \section{Symbolizer}
@@ -615,24 +808,83 @@ problems, in particular:  \todo{finish here}
 how it is split into a single Symbolizer and multiple possible instrumentation 
 modules}
 
-\todo{High level rundown of how the original x86 Symbolizer works.
-Explain how we approached the symbolizer key issues mentioned above here.}
+\todo{Not really sure what to write here, as the ideas behind the symbolization 
+process are basically the same to x86, nothing new/fancy here.}
 
 
 
 
-\section{Instrumentation (ASan)}
-\todo{Explain the ASan algorithm, the concept of shadow memory, etc.
-Explain the limitations of our binary ASan compared to source ASan:}
+\section{Instrumentation (BASan)}
+The ASan instrumentation was designed to be compatible with the 
+AddressSanitizer libraries provided by Google, \texttt{libasan}. We carefully 
+reused shadow memory offset and size to match those included in 
+\texttt{libasan}. The library will hook on each call to \texttt{malloc} and 
+\texttt{free}, writing in the shadow memory the available bytes that can be 
+used. \sysname takes care of finding each access in memory and inserting 
+instrumentation just before it to check the relevant bytes of shadow memory and 
+error out in case an overflow or other memory corruption was found.
+
+
+\begin{lstlisting}[language=C,label={lst:asan},caption={ASan checking algorithm 
+implemented in C}]
+byte shadow_value = *(MemToShadow(address));
+if (shadow_value) {
+  if ((address & 7) + AccessSize - 1 >= shadow_value) {
+	ReportError(address, AccessSize);
+  }
+}
+\end{lstlisting}
+
+Listing \ref{lst:asan} shows the ASan checking algorithm in high level. To 
+implement it as an instrumentation pass, we manually wrote assembly code that 
+matched its functionality and could be adapted to both reads and stores.  
+Different versions of ASan snippets were developed depending on the size of the 
+store/load, to ensure maximum efficiency and avoid wasting calculations at 
+runtime. An example of an instrumented instruction can be found in the listing 
+below:
+
+\todo{Add comparison between non-instrumented and instrumented 8-byte load (the 
+simplest case)}
+
+Unfortunately, the ASan instrumentation pass is not completely equivalent, in 
+fact we can highlight the following differences:
 \begin{itemize}
-	\item No checks on global variables
-	\item Checks on the stack only at the stack-frame level
-	\item Many more instructions instrumented because of lack of source code
+	\item Missing global variable bounds checking: without the source code, it 
+		is impossible to distinguish boundaries between global variables in 
+		data section. For this reason, checks on global variables are disabled.
+	\item Missing stack variables bounds checking: similar to above, without 
+		source code it is extremely hard to find boundaries between variables 
+		on the stack.
+	\item Number of instrumented locations: ASan used as a compiler pass is 
+		able to prune the checking on a lot of memory accesses, since with the 
+		source code on many instances the safeness of a memory access can be 
+		determined at compile-time. However, \sysname works only on binaries 
+		and thus is forced to instrument all memory accesses.
 \end{itemize}
+Despite the following limitations, the BASan instrumentation pass is able to 
+provide the same core functionality of the original ASan compiler pass (memory 
+sanitization on the heap), and with very little additional overhead.
 
+\subsubsection{Optimization: register savings}.
+The snippets of assembly used to implement ASan memory checking require some 
+temporary register usage to store intermediate calculations, and thus require 
+special precautions before inserting them in the middle of a binary. 
 
+First of all, if ASan implementation is enabled, we perform a static analysis 
+of register usage on every function of the binary, in such a way that at any 
+given instruction we know which registers can be freely used and which cannot 
+be modified without hindering the correct execution of the binary. The snippets 
+will try to use as many "free" registers as possible, but it is not guaranteed 
+that all registers needed by the snippets will be available. In that case, we 
+use the stack to push and save the old values of the registers we use inside 
+the snippets, and restore them as the last step of instrumentation. 
 
+Of particular note is the saving of the value of register \texttt{ncvz}, which 
+holds the condition flags in \texttt{aarch64}. This register is always saved 
+and restored at each instrumented location, as all ASan snippets contain a 
+conditional branch for the error checking. 
 
+\todo{If needed, put other optimizations here, like batching}
 
 
 
@@ -747,7 +999,7 @@ First, the good ol' ones: \texttt{PIN}\cite{pin},
 More recently, \texttt{Multiverse} \cite{multiverse}, \texttt{Frida} and 
 \texttt{DynamorIO} are interesting examples.
 
-\texttt{QASAN}\cite{qasan} is similar to Retrowrite's BAsan, much slower but 
+\texttt{QASAN}\cite{qasan} is similar to \sysname's BAsan, much slower but 
 also much more portable (works on any binary supported by QEMU)
 
 
@@ -766,7 +1018,7 @@ control flow, but also noticeable overhead
 
 \textbf{Static rewriters that use symbolization}:\\
 \texttt{Uroboros}\cite{uroboros} and \texttt{Ramblr}\cite{ramblr} are the first 
-reassemblable assembly approaches (symbolization), \texttt{Retrowrite} 
+reassemblable assembly approaches (symbolization), \sysname 
 \cite{dinesh20oakland} (x86 version)
 
 \textbf{Static rewriters aimed at ARM binaries}:\\
@@ -788,27 +1040,26 @@ For more check out recent surveys on the area of binary rewriting
 
 \setlength{\parindent}{0cm}
 \hangindent=0.7cm \textbf{Support for more source languages}: For now, 
-\texttt{Retrowrite} supports only binaries compiled from the C language, both 
-for the x86 and the ARM implementation. The easiest addition would be to add 
-support for C++ by expanding the analysis capabilities of \texttt{Retrowrite} 
-to support exception tables too, but many more languages could be supported in 
-the future. 
+\sysname supports only binaries compiled from the C language, both for the 
+\texttt{x86} and the ARM implementation. The easiest addition would be to add 
+support for C++ by expanding the analysis capabilities of \sysname to support 
+exception tables too, but many more languages could be supported in the future. 
 
 \hangindent=0.7cm \textbf{Support for kernel space binaries}: Right now the ARM 
-port of \texttt{Retrowrite} supports only userspace binaries, contrary to the 
-x86 version that supports linux kernel modules too. The kernel version of 
-\texttt{Retrowrite\_ARM} would prove to be particularly interesting as it would 
-open new ways to efficiently fuzz Android kernel modules.
+port of \sysname supports only userspace binaries, contrary to the 
+\texttt{x86} version that supports linux kernel modules too. The kernel version 
+of \sysname\_ARM would prove to be particularly interesting as it would open 
+new ways to efficiently fuzz Android kernel modules.
 
 \hangindent=0.7cm \textbf{Support for more executable formats/operating 
-systems}: The current implementation of the \texttt{Retrowrite} tool is aimed 
-only towards ELF files, but adding support for MACH-O and PE binaries should 
-not require too much effort. This would also be interesting as Windows and 
-MacOS present way more closed-source modules compared to Linux.
+systems}: The current implementation of the \sysname tool is aimed only 
+towards ELF files, but adding support for MACH-O and PE binaries should not 
+require too much effort. This would also be interesting as Windows and MacOS 
+present way more closed-source modules compared to Linux.
 
 \hangindent=0.7cm \textbf{More instrumentation passes}: While right now we 
 implemented only the AddressSanitizer instrumentation in the ARM port of
-\texttt{Retrowrite}, the design of \texttt{Retrowrite} is modular to make
+\sysname, the design of Retrowrite is modular to make
 adding new instrumentation passes or new mitigations very easy for anyone. To
 name a few, the interesting ones would be:
 \begin{itemize}
@@ -829,19 +1080,19 @@ name a few, the interesting ones would be:
 %advances the status quo.
 
 
-In summary, we develop the ARM architecture implementation of the 
-\texttt{Retrowrite} project, a scalable static rewriter for linux C binaries.  
-\texttt{Retrowrite} enables targeted application of static instrumentation 
-where no source code is available, such as proprietary binaries, inline 
-assembly, or code generated by a deprecated compiler.  We also present an 
-example instrumentation pass on top of the symbolization engine, 
-AddressSanitizer, particularly useful for fuzzing purposes. We present new 
-solutions to problems arising from the peculiarities of the ARM architecture 
-such as the fixed-size instruction set, global variable accesses and jump table 
-instrumentation. We show that the total overhead of the symbolization and the 
-instrumentation pass are competitive with source based AddressSanitizer.  Our 
-work shows that \texttt{Retrowrite}'s original approach is not limited to the 
-x86 architecture, but can be applied to the ARM architecture and more.
+In summary, we develop the ARM architecture implementation of the \sysname 
+project, a scalable static rewriter for linux C binaries.  \sysname enables 
+targeted application of static instrumentation where no source code is 
+available, such as proprietary binaries, inline assembly, or code generated by 
+a deprecated compiler.  We also present an example instrumentation pass on top 
+of the symbolization engine, AddressSanitizer, particularly useful for fuzzing 
+purposes. We present new solutions to problems arising from the peculiarities 
+of the ARM architecture such as the fixed-size instruction set, global variable 
+accesses and jump table instrumentation. We show that the total overhead of the 
+symbolization and the instrumentation pass are competitive with source based 
+AddressSanitizer.  Our work shows that \sysname's original approach is not 
+limited to the \texttt{x86} architecture, but can be applied to the ARM 
+architecture and more.
 
 
 
