@@ -190,27 +190,28 @@
 %The eights paragraph discusses your core contribution.
 %This section is usually 3-5 pages.
 
-Mobile environments are ubiquitous but often lack security updates, for 
-example, on Android the average phone is outdated by \todo{XXX}. Security 
-testing in mobile environments is extremely challenging as vendors often 
-release components as binary-only, i.e., without accompanying source code.  
-Binaries cannot be readily evaluated by security analysts, resulting in 
-potentially undiscovered vulnerabilities in this binary-only modules, which 
-often run with high privileges and are exposed to the network.  Binary 
-rewriting allows analysts to work with binary-only modules but existing 
-solutions are faced with severe disadvantages of either high overhead for 
-dynamic rewriting and limited rewriting capabilities for static solutions.
+Mobile environments are ubiquitous but often lack security updates, for
+example, on Android over 60\% of devices are outdated by at least two
+years~\cite{android}. Security testing in mobile environments is extremely
+challenging as vendors often release components as binary-only, i.e., without
+accompanying source code.  Binaries cannot be readily evaluated by security
+analysts, resulting in potentially undiscovered vulnerabilities in this
+binary-only modules, which often run with high privileges and are exposed to
+the network.  Binary rewriting allows analysts to work with binary-only modules
+but existing solutions are faced with severe disadvantages of either high
+overhead for dynamic rewriting and limited rewriting capabilities for static
+solutions.
 
-While there is no shortage of static rewriters targeted towards the 
-\texttt{x86} architecture, only a few support \texttt{ARM}. One of the reasons 
-behind this is that \texttt{ARM} CPUs were not popular until very recently; 
-however it is also true that \texttt{ARM} poses very different challenges in 
-the realm of static rewriting. Trampolines and other kinds of instrumentation 
-are made much easier by the fixed-size instruction set, as problems such as 
-overwriting instructions shorter than a jump are not present.  However, that's 
-not always true: the modern \emph{symbolization} approach for instrumentation 
-that \sysname and other recent binary rewriters adopted becomes particularly 
-harder. 
+While there is no shortage of static rewriters targeted towards the
+\texttt{x86} architecture, only a few support \texttt{ARM}. One of the reasons
+behind this is that \texttt{ARM} CPUs were not popular until very recently;
+furthermore \texttt{ARM} poses very different challenges in the realm of static
+rewriting. Trampolines and other kinds of instrumentation are made much easier
+by the fixed-size instruction set, as problems such as overwriting instructions
+shorter than a jump are not present.  However, that does not hold true for all
+instrumentation techniques: the modern \emph{symbolization} approach for
+instrumentation that \sysname and other recent binary rewriters adopted becomes
+particularly harder. 
 
 Symbolization is the process of substituting pointers and references in the 
 executable with assembly labels, in order to permit arbitrary insertion of 
@@ -261,170 +262,6 @@ and compressed jump tables, and an efficient instrumentation pass that
 retrofits \texttt{aarch64} binaries with ASan.
 
 
-
-%\hrule
-
-%Mobile devices are increasingly becoming the subject of auditing and security
-%analysis as the mobile phone market rises each year. Countless tools have been
-%developed to help or even automatize the vulnerability researcher's role;
-%however, most of those tools are targeted towards open source software.
-
-%Unfortunately, in spite of the increasing popularity of open source software,
-%closed source modules and binaries are still much more common, especially in
-%the phone market: while 75\% \cite{statista} of mobile users use Android or
-%other open-source operating systems, virtually all of those devices have
-%proprietary components already installed at the moment of purchase. Most
-%commonly there are Google proprietary libraries like the Play API, manufacturer
-%custom modules and firmwares (for hardware peripherals such as Bluetooth or
-%WWAN connectivity), and much more. In many instances, those closed-source
-%modules are installed as kernel modules or run with root privileges. To make
-%things worse, they are often exposed to the network, creating opportunities for
-%malware or other bad actors to take control of mobile devices.
-
-%As an example, one of the most efficient techniques for automatic vulnerability
-%discovery, \emph{fuzzing}, is really effective only when applied on software
-%accompanied by its source code.  When considering fuzzing closed source
-%binaries, the main difficulties that arise are due to the fact that the
-%compilation process discards a large amount of information that could be very
-%useful while hunting bugs, such as type information, the control flow graph,
-%array boundaries, distinction between scalars/references, and much more.
-%Still, there are techniques that can help instrument a binary and fuzz it in
-%those conditions, and they all fall into a common category called \emph{Binary
-%rewriting}.
-
-%\hrule
-
-%% First paragraph: the setting
-%Security researchers routinely find vulnerabilities in major desktop OSes, but 
-%recently a lot of focus has shifted on the analysis of mobile operating 
-%systems, including Android.  More than 40 CVEs for Android were published just 
-%in December of 2019 
-%\footnote{\url{https://source.android.com/security/bulletin/2019-12-01}}.  Such 
-%big focus on the analysis of Android has certainly a lot to do on with the rise 
-%of the mobile phone market in the latest years, but also with the fact that the 
-%source code of Android is (mostly) open and available for everyone to dig 
-%through and debug.
-
-%Still, inspecting the code is not the only way of auditing a codebase, in 
-%fact a very effective technique as of today is the process of \emph{fuzzing}.  
-%It is taking a lot of traction because setting up a fuzzing campaign, even a 
-%large scale one, is relatively easy for beginners too. The main advantages of 
-%fuzzing compared to other automatic vulnerability discovery techniques is that 
-%it is not needed to have a deep knowledge of the fuzzer engine to have a 
-%successful run, it is only required to select the initial input seed corpus, 
-%and to implement a fuzzing harness. Moreover, the approach is extremely easy to 
-%parallelize, so it is not uncommon for companies to setup large server farms 
-%with thousands of CPU cores dedicated to fuzzing.
-
-%Having the source code available while fuzzing immensely helps the fuzzer 
-%engine thanks to coverage information, with which the fuzzer can prune inputs 
-%much more accurately compared to \emph{black-box} fuzzing.  Furthermore, the 
-%presence of source code gives the opportunity to apply instrumentation passes, 
-%which can help the fuzzer even more.  For instance, memory sanitization helps 
-%the fuzzer find memory corruption bugs as soon as they are introduced without 
-%needing to wait for the target to crash. 
-
-%\hrule
-
-%Unfortunately, in spite of the increasing popularity of open source software, 
-%closed source modules and binaries are still much more common: on desktop, 90\% 
-%of the operating systems are closed source, and even who runs an open-source 
-%alternative usually still has many closed source components (e.g., Skype, 
-%Nvidia drivers, various DRM components in browsers, etc.). This holds true even 
-%in the phone market: while 75\% \cite{statista} of mobile users use Android or 
-%other open-source operating systems, virtually all of those devices have 
-%proprietary components already installed at the moment of purchase. Most 
-%commonly there are Google proprietary libraries like the Play API, manufacturer 
-%custom modules and firmwares (for hardware peripherals such as Bluetooth or 
-%WWAN connectivity), and much more. In many instances, those closed-source 
-%modules are installed as kernel modules or run with root privileges. To make 
-%things worse, they are often exposed to the network, creating opportunities for 
-%malware or other bad actors to take control of mobile devices.
-
-%When considering fuzzing closed source binaries, the main difficulties that 
-%arise are due to the fact that the compilation process discards a large amount 
-%of information that could be very useful while hunting bugs, such as type 
-%information, the control flow graph, array boundaries, distinction between 
-%scalars/references, and much more.  Still, there are techniques that can help 
-%instrument a binary and fuzz it in those conditions, and they all fall into a 
-%common category called \emph{Binary rewriting}.
-
-%Binary rewriting techniques can be divided into two main approaches: 
-%\emph{dynamic} rewriting and \emph{static} rewriting. Dynamic rewriting 
-%involves running the target binary in a controlled execution alongside the 
-%rewriter engine, which instruments the target binary on the fly. The advantage 
-%of this approach is that at runtime the rewriter can recover some of the 
-%information that was lost during compilation (the most important one being the 
-%distinction between scalars and references), and so do not need to rely on 
-%heuristics, and can support a very wide variety of binaries (even packed or 
-%self-modifying binaries). However, the trade-off is the overhead introduced in 
-%the process: dynamic rewriters usually have between 10x and 100x of overhead 
-%\cite{dinesh20oakland}, which has a great impact on fuzzing performance. 
-
-%On the other hand, static rewriting is the opposite approach: instrument the 
-%target binary ahead of time, using various techniques to recover as much 
-%information as possible from the code (including heuristics). Flexibility of 
-%static rewriters is more limited, as virtually none of them support edge cases 
-%such as self-modifying binaries, code that does not support standard control 
-%flow practices (like OCaml or Haskell binaries), or even code generated by a 
-%non-popular compiler. However, the overhead introduced by static rewriting is 
-%generally very low, and moreover it can support more complex instrumentation 
-%passes (while dynamic rewriters need to keep it simple for performance 
-%constraints). 
-
-%Since static rewriters lack flexibility, the aim of this thesis is to expand 
-%the domain of supported binaries of one of the recently published static 
-%rewriters, \sysname, by Dinesh et al. \cite{dinesh20oakland}. Retrowrite uses 
-%the relatively new approach of \emph{symbolization}, that produces 
-%reassemblable assembly on which instrumentation passes may be applied to.  
-%\sysname focuses on position-independent binaries to eliminate the problem of 
-%distinguishing between scalars and pointers, and manages to produce 
-%reassemblable assembly without the usage of heuristics. 
-
-%\sysname supports only \texttt{x86\_64} binaries in both user and kernel 
-%space; however, most mobile devices are running on an ARM CPU, and also some 
-%new laptop devices like the latest line of MacBooks are switching to ARM. In 
-%this thesis we will explain our efforts to add support for userland ARM64 
-%binaries, with the goal that one day we will be able to fuzz Android modules 
-%and closed source components. Furthermore, we will also explain how we ported 
-%to ARM the original instrumentation pass that the authors of \sysname 
-%implemented, \emph{AddressSanitizer}, as a proof of concept to show the 
-%usefulness of the symbolization approach. To the best of our knowledge, there 
-%were no previous attempts at statically introducing memory sanitization to ARM 
-%binaries in the past. 
-
-%We will show through benchmarks how the overhead of \sysname's 
-%instrumentation is very low when compared to source based instrumentation, and 
-%much lower than state-of-the-art dynamic instrumentation. In our experiments, 
-%we find that we are \todo{xx\%} slower than source based instrumentation, and 
-%\todo{xx\%} faster than state-of-the-art dynamic instrumentation.
-
-%Our core contributions consist in solving many challenges that static rewriting 
-%ARM binaries present, mostly spawning from the fact that ARM is a fixed size 
-%instruction set, in which pointers need to be built in multiple instructions, 
-%or located in memory in a special region called a \emph{literal pool}. A series 
-%of new problems like jump table size fixing arise from this, and, to the best 
-%of our knowledge, some of those were never analyzed before.  We present our 
-%approach to fix or workaround those problems, and will give pointers to a few 
-%alternative solutions we analyzed.
-
-%We then evaluate the performance of our ARM port of \sysname , discuss its 
-%limitations, discuss related work, and present our conclusions.
-
-
-
-
-% Second paragraph: main challenge
-
-% Third paragraph: related work is insufficient, and why
-
-% Fourth+Fifth paragraph: our approach, why is it needed
-
-% Sixth paragraph: thesis statement (single sentence?)
-
-% Seventh paragraph: highlight of results
-
-% Eight paragraph: our core contribution
 
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Background}
@@ -677,11 +514,10 @@ source of non trivial problems during the porting of \sysname.
 %This section is usually 5-10 pages.
 
 
-We will now go over the goals that that we put oursevles at the start of the 
-project, explain which were the key issues that we had to face due to the 
-quirks of the ARM architecture, and the solutions we adopted to overcome those 
-problems both in the \emph{symbolization} and in the \emph{instrumentation} 
-sides of \sysname.
+We will now go over the goals that we designed \sysname according to, explain
+which were the key issues that we had to face due to the quirks of the ARM
+architecture, and the solutions we adopted to overcome those problems both in
+the \emph{symbolization} and in the \emph{instrumentation} sides of \sysname.
 
 
 \section{Goals}
@@ -692,24 +528,6 @@ by the ARM ISA.\@ It should also support COTS software and scale well to large
 binaries. Finally, its implementation should be modular in such a way as to 
 avoid limiting any kind of instrumentation.
 
-%\hrule
-
-%Our goal is to develop a modular platform on which it is easy to develop 
-%instrumentation passes for ARM binaries, with the example implementation of a 
-%memory sanitization pass.  We identify the following requirements that our 
-%solution should satisfy:
-
-%\begin{itemize}
-	%\item \textbf{RQ1:} The implementation should supports COTS binaries, and 
-		%should scale well to large binaries.
-	%\item \textbf{RQ2:} The symbolization and instrumentation processes must 
-		%not hinder the intrinsic functionality of the binary being rewritten.
-	%\item \textbf{RQ3:} The memory safety instrumentation pass we develop must 
-		%be competitive in performance and functionality with its source-based 
-		%counterpart.
-
-
-%\end{itemize}
 
 \section{System architecture}
 
@@ -720,7 +538,7 @@ avoid limiting any kind of instrumentation.
 \end{figure}
 
 \sysname is divided into two main components: the symbolizer and the 
-instrumentaion.  The symbolizer takes care of loading and analyzing a binary, 
+instrumentation.  The symbolizer takes care of loading and analyzing a binary, 
 but its main job is substituting every reference in the target with assembly 
 labels, plus some minor tasks to keep the original functionality of the binary 
 intact. One or more instrumentation passes can be enabled to apply 
