@@ -53,7 +53,7 @@
 }
 
 
-\title{Arm Wrestling: porting the Retrowrite project to the ARM architecture}
+\title{Arm Wrestling: efficient binary rewriting on ARM}
 \author{Luca Di Bartolomeo} \adviser{Prof. Mathias Payer (EPFL)}
 \supervisor{Prof. Kenny Paterson (ETH)}
 
@@ -107,7 +107,6 @@
 	spend so many weekends without going out but ultimately lead me to meet so 
 	many new interesting people, and the teams I had played with occasionally, 
 	namely polyglots and TRX. Thanks!
-
 }
 
 \begin{document}
@@ -118,39 +117,57 @@
 
 \begin{abstract}
 
-	While there were good recent attempts, 
+	%While there were good recent attempts, 
+	%limiting our computing to only open-source software
+	%is particularly hard, and especially on the mobile phone market even the
+	%most determined users are often forced to use closed-source libraries or
+	%modules.  Those often run at privileges higher than we might want (e.g.,
+	%manufacturer specific kernel modules \cite{androidclosed}), and are also
+	%hard to audit for vulnerabilities. 
+
+	Closed source programs are particularly hard to audit for vulnerabilities.
+	Moreover, it is often the case that modern security measures and
+	mitigations are available only as compiler passes that require possession
+	of the source code. Even if there were good recent attempts
 	\footnote{\url{https://www.pine64.org/pinephone/}}
 	\footnote{\url{https://system76.com/}}
 	\footnote{\url{https://puri.sm/products/}}
-	limiting our computing to only open-source software
-	is particularly hard, and especially on the mobile phone market even the
-	most determined users are often forced to use closed-source libraries or
-	modules.  Those often run at privileges higher than we might want (e.g.,
-	manufacturer specific kernel modules \cite{androidclosed}), and are also
-	hard to audit for vulnerabilities. 
+	at completely avoiding usage or closed source libraries of modules that run
+	at privileges higher than we might want (e.g., manufacturer specific kernel
+	modules \cite{androidclosed})
+	in practice it is almost impossible to restrict our computing to
+	exclusively open source and audited software.  It is then of paramount
+	importance that we find new ways of securing software without source code.
+
+
 
 	Many existing tools were developed to improve the auditability of closed
 	source programs, especially aimed at helping the fuzzing process, with
 	approaches such as implementing AddressSanitizer (a compiler pass only
 	available with the source code) through dynamic instrumentation. However,  
 	even state-of-the-art dynamic instrumentation engines incur in prohibitive 
-	runtime overhead (10x and more). 
+	runtime overhead (10x and more). Static rewriters are increasing in popularity, 
+	but they are mostly targeted towards the \texttt{x86} architecture.
 
-	In this thesis, we would like to show that symbolization for ARM binaries 
+	We would like to show that symbolization for ARM binaries 
 	is a viable alternative to existing approaches, that has less flexibility 
 	(only works on C, position independent binaries) but has
-	negligible overhead compared to compiled source code. We present the ARM
-	port of \sysname, an existing static binary rewriter for \texttt{x86}
-	executables, which implements the symbolization engine and the memory
-	sanitization instrumentation. 
+	negligible overhead compared to compiled source code. We present 
+	RetroWrite-ARM, a \emph{zero-overhead} static binary rewriter for \texttt{aarch64}
+	executables that solves key challenges such as pointer construction
+	detection and jump table instrumentation, based on 
+	the \sysname project.
 
-	While \sysname is not the only binary rewriter for \texttt{x86}, there are 
-	very few that are aimed at the ARM64 architecture. In particular, most of 
-	them resort to lifting to an intermediate IR (achieving more flexibility 
-	but losing fine-grained control over the instrumented instructions) or use 
-	approaches like trampolines which make the whole problem much easier but 
-	also introduce a noticeable overhead.
-	\todo{add a conclusion to this abstract, like "our proof of work 
+	%which implements the symbolization engine and the memory
+	%sanitization instrumentation. 
+
+	%While \sysname is not the only binary rewriter for \texttt{x86}, there are 
+	%very few that are aimed at the ARM64 architecture. In particular, most of 
+	%them resort to lifting to an intermediate IR (achieving more flexibility 
+	%but losing fine-grained control over the instrumented instructions) or use 
+	%approaches like trampolines which make the whole problem much easier but 
+	%also introduce a noticeable overhead.
+	\todo{add a fourth paragraph conclusion to this abstract, like "our proof of work 
 	implementation of retrowrite is xx\% faster than QEMU and etc..."}
 
 
@@ -173,120 +190,226 @@
 %The eights paragraph discusses your core contribution.
 %This section is usually 3-5 pages.
 
-% First paragraph: the setting
-Security researchers routinely find vulnerabilities in major desktop OSes, but 
-recently a lot of focus has shifted on the analysis of mobile operating 
-systems, including Android.  More than 40 CVEs for Android were published just 
-in December of 2019 
-\footnote{\url{https://source.android.com/security/bulletin/2019-12-01}}.  Such 
-big focus on the analysis of Android has certainly a lot to do on with the rise 
-of the mobile phone market in the latest years, but also with the fact that the 
-source code of Android is (mostly) open and available for everyone to dig 
-through and debug.
+Mobile environments are ubiquitous but often lack security updates, for 
+example, on Android the average phone is outdated by \todo{XXX}. Security 
+testing in mobile environments is extremely challenging as vendors often 
+release components as binary-only, i.e., without accompanying source code.  
+Binaries cannot be readily evaluated by security analysts, resulting in 
+potentially undiscovered vulnerabilities in this binary-only modules, which 
+often run with high privileges and are exposed to the network.  Binary 
+rewriting allows analysts to work with binary-only modules but existing 
+solutions are faced with severe disadvantages of either high overhead for 
+dynamic rewriting and limited rewriting capabilities for static solutions.
 
-Still, digging through the code is not the only way of auditing a codebase, in 
-fact a very effective technique as of today is the process of \emph{fuzzing}.  
-It is taking a lot of traction because setting up a fuzzing campaign, even a 
-large scale one, is relatively easy for beginners too. The main advantages of 
-fuzzing compared to other automatic vulnerability discovery techniques is that 
-it is not needed to have a deep knowledge of the fuzzer engine to have a 
-successful run, it is only required to select the initial input seed corpus, 
-and to implement a fuzzing harness. Moreover, the approach is extremely easy to 
-parallelize, so it is not uncommon for companies to setup large server farms 
-with thousands of CPU cores dedicated to fuzzing.
+While there is no shortage of static rewriters targeted towards the 
+\texttt{x86} architecture, only a few support \texttt{ARM}. One of the reasons 
+behind this is that \texttt{ARM} CPUs were not popular until very recently; 
+however it is also true that \texttt{ARM} poses very different challenges in 
+the realm of static rewriting. Trampolines and other kinds of instrumentation 
+are made much easier by the fixed-size instruction set, as problems such as 
+overwriting instructions shorter than a jump are not present.  However, that's 
+not always true: the modern \emph{symbolization} approach for instrumentation 
+that \sysname and other recent binary rewriters adopted becomes particularly 
+harder. 
 
-Having the source code available while fuzzing immensely helps the fuzzer 
-engine thanks to coverage information, with which the fuzzer can prune inputs 
-much more accurately compared to \emph{black-box} fuzzing.  Furthermore, the 
-presence of source code gives the opportunity to apply instrumentation passes, 
-which can help the fuzzer even more.  For instance, memory sanitization helps 
-the fuzzer find memory corruption bugs as soon as they are introduced without 
-needing to wait for the target to crash. 
+Symbolization is the process of substituting pointers and references in the 
+executable with assembly labels, in order to permit arbitrary insertion of 
+instructions without breaking the original functionality of a binary. On 
+\texttt{ARM} there is the non-trivial problem of the detection of pointer 
+constructions, as since a whole pointer does not fit into a single instructions 
+it is very common to build pointers at runtime through multiple memory and 
+arithmetic instructions. Furthermore, after detecting the construction of a 
+pointer, it is not clear how the construction could be cleanly substituted with 
+an assembly label. 
 
-Unfortunately, in spite of the increasing popularity of open source software, 
-closed source modules and binaries are still much more common: on desktop, 90\% 
-of the operating systems are closed source, and even who runs an open-source 
-alternative usually still has many closed source components (e.g., Skype, 
-Nvidia drivers, various DRM components in browsers, etc.). This holds true even 
-in the phone market: while 75\% \cite{statista} of mobile users use Android or 
-other open-source operating systems, virtually all of those devices have 
-proprietary components already installed at the moment of purchase. Most 
-commonly there are Google proprietary libraries like the Play API, manufacturer 
-custom modules and firmwares (for hardware peripherals such as Bluetooth or 
-WWAN connectivity), and much more. In many instances, those closed-source 
-modules are installed as kernel modules or run with root privileges. To make 
-things worse, they are often exposed to the network, creating opportunities for 
-malware or other bad actors to take control of mobile devices.
+Another problem specific of the \texttt{ARM} architecture that affects binary 
+rewriting is caused by how jump tables are stored in memory. Contrary to 
+\texttt{x86}, jump tables are stored as offsets from the base case, and are 
+often \emph{compressed}, i.e., each case takes much less space than the size of 
+a pointer (usually one or two bytes is enough). Detecting them is hard, as they 
+look like random bytes when inspecting memory (and code will access them 
+through pointer construction); symbolizing them is even harder, as inserting 
+instrumentation could break the compression in memory.
 
-When considering fuzzing closed source binaries, the main difficulties that 
-arise are due to the fact that the compilation process discards a large amount 
-of information that could be very useful while hunting bugs, such as type 
-information, the control flow graph, array boundaries, distinction between 
-scalars/references, and much more.  Still, there are techniques that can help 
-instrument a binary and fuzz it in those conditions, and they all fall into a 
-common category called \emph{Binary rewriting}.
+State-of-the-art binary rewriters for \texttt{ARM} use different approaches 
+such as trampolines (which do not incur in the problems stated above, as 
+trampolines only require minimal fixes in the binary to work) or lifting to an 
+intermediate IR.  However, they introduce a non-negligible overhead, as any 
+instrumentation location added now has two additional jumps that need to be 
+executed and that frequently invalidate the code cache. 
 
-Binary rewriting techniques can be divided into two main approaches: 
-\emph{dynamic} rewriting and \emph{static} rewriting. Dynamic rewriting 
-involves running the target binary in a controlled execution alongside the 
-rewriter engine, which instruments the target binary on the fly. The advantage 
-of this approach is that at runtime the rewriter is able to recover some of the 
-information that was lost during compilation (the most important one being the 
-distinction between scalars and references), and so do not need to rely on 
-heuristics, and can support a very wide variety of binaries (even packed or 
-self-modifying binaries). However, the trade-off is the overhead introduced in 
-the process: dynamic rewriters usually have between 10x and 100x of overhead 
-\cite{dinesh20oakland}, which has a great impact on fuzzing performance. 
+In this thesis we present and discuss how we overcame those challenges to make 
+\sysname support \texttt{aarch64} binaries. Through heavy use of 
+backward-slicing static analysis we are able to recover pointer construction 
+patterns; we also avoid breaking jump tables by compressing them in-place even 
+more (if necessary). We also implemented an example instrumentation pass, 
+\emph{AddressSanitizer}, which shows the ease and efficiency of writing 
+instrumentation with the symbolization approach. 
 
-On the other hand, static rewriting is the opposite approach: instrument the 
-target binary ahead of time, using various techniques to recover as much 
-information as possible from the code (including heuristics). Flexibility of 
-static rewriters is more limited, as virtually none of them support edge cases 
-such as self-modifying binaries, code that does not support standard control 
-flow practices (like OCaml or Haskell binaries), or even code generated by a 
-non-popular compiler. However, the overhead introduced by static rewriting is 
-generally very low, and moreover it can support more complex instrumentation 
-passes (while dynamic rewriters need to keep it simple for performance 
-constraints). 
+We will show that our binary rewriter incurs in very low overhead through 
+standard CPU benchmarks used by the scientific community to evaluate rewriters.  
+We will also show that our implementation scales well to COTS binaries, as the 
+benchmarks include large programs such as \texttt{gcc} and \texttt{perl}.  
+Finally, we also evaluate the performance of our implementation of 
+AddressSanitizer, showing that it is competitive with its source-based 
+counterpart, adding only 30\% additional overhead on top of it. 
 
-Since static rewriters lack flexibility, the aim of this thesis is to expand 
-the domain of supported binaries of one of the recently published static 
-rewriters, \sysname, by Dinesh et al. \cite{dinesh20oakland}. Retrowrite uses 
-the relatively new approach of \emph{symbolization}, that produces 
-reassemblable assembly on which instrumentation passes may be applied to.  
-\sysname focuses on position-independent binaries to eliminate the problem of 
-distinguishing between scalars and pointers, and manages to produce 
-reassemblable assembly without the usage of heuristics. 
+Our core contribution consists in the development of the first zero-overhead 
+\texttt{aarch64} static binary symbolizer that scales to large COTS binaries, 
+with key insights in detecting and symbolizing pointer construction mechanisms 
+and compressed jump tables, and an efficient instrumentation pass that 
+retrofits \texttt{aarch64} binaries with ASan.
 
-\sysname supports only \texttt{x86\_64} binaries in both user and kernel 
-space; however, most mobile devices are running on an ARM CPU, and also some 
-new laptop devices like the latest line of MacBooks are switching to ARM. In 
-this thesis we will explain our efforts to add support for userland ARM64 
-binaries, with the goal that one day we will be able to fuzz Android modules 
-and closed source components. Furthermore, we will also explain how we ported 
-to ARM the original instrumentation pass that the authors of \sysname 
-implemented, \emph{AddressSanitizer}, as a proof of concept to show the 
-usefulness of the symbolization approach. To the best of our knowledge, there 
-were no previous attempts at statically introducing memory sanitization to ARM 
-binaries in the past. 
 
-We will show through benchmarks how the overhead of \sysname's 
-instrumentation is very low when compared to source based instrumentation, and 
-much lower than state-of-the-art dynamic instrumentation. In our experiments, 
-we find that we are \todo{xx\%} slower than source based instrumentation, and 
-\todo{xx\%} faster than state-of-the-art dynamic instrumentation.
 
-Our core contributions consist in solving many challenges that static rewriting 
-ARM binaries present, mostly spawning from the fact that ARM is a fixed size 
-instruction set, in which pointers need to be built in multiple instructions, 
-or located in memory in a special region called a \emph{literal pool}. A series 
-of new problems like jump table size fixing arise from this, and, to the best 
-of our knowledge, some of those were never analyzed before.  We present our 
-approach to fix or workaround those problems, and will give pointers to a few 
-alternative solutions we analyzed.
+%\hrule
 
-We then evaluate the performance of our ARM port of \sysname , discuss its 
-limitations, discuss related work, and present our conclusions.
+%Mobile devices are increasingly becoming the subject of auditing and security
+%analysis as the mobile phone market rises each year. Countless tools have been
+%developed to help or even automatize the vulnerability researcher's role;
+%however, most of those tools are targeted towards open source software.
+
+%Unfortunately, in spite of the increasing popularity of open source software,
+%closed source modules and binaries are still much more common, especially in
+%the phone market: while 75\% \cite{statista} of mobile users use Android or
+%other open-source operating systems, virtually all of those devices have
+%proprietary components already installed at the moment of purchase. Most
+%commonly there are Google proprietary libraries like the Play API, manufacturer
+%custom modules and firmwares (for hardware peripherals such as Bluetooth or
+%WWAN connectivity), and much more. In many instances, those closed-source
+%modules are installed as kernel modules or run with root privileges. To make
+%things worse, they are often exposed to the network, creating opportunities for
+%malware or other bad actors to take control of mobile devices.
+
+%As an example, one of the most efficient techniques for automatic vulnerability
+%discovery, \emph{fuzzing}, is really effective only when applied on software
+%accompanied by its source code.  When considering fuzzing closed source
+%binaries, the main difficulties that arise are due to the fact that the
+%compilation process discards a large amount of information that could be very
+%useful while hunting bugs, such as type information, the control flow graph,
+%array boundaries, distinction between scalars/references, and much more.
+%Still, there are techniques that can help instrument a binary and fuzz it in
+%those conditions, and they all fall into a common category called \emph{Binary
+%rewriting}.
+
+%\hrule
+
+%% First paragraph: the setting
+%Security researchers routinely find vulnerabilities in major desktop OSes, but 
+%recently a lot of focus has shifted on the analysis of mobile operating 
+%systems, including Android.  More than 40 CVEs for Android were published just 
+%in December of 2019 
+%\footnote{\url{https://source.android.com/security/bulletin/2019-12-01}}.  Such 
+%big focus on the analysis of Android has certainly a lot to do on with the rise 
+%of the mobile phone market in the latest years, but also with the fact that the 
+%source code of Android is (mostly) open and available for everyone to dig 
+%through and debug.
+
+%Still, inspecting the code is not the only way of auditing a codebase, in 
+%fact a very effective technique as of today is the process of \emph{fuzzing}.  
+%It is taking a lot of traction because setting up a fuzzing campaign, even a 
+%large scale one, is relatively easy for beginners too. The main advantages of 
+%fuzzing compared to other automatic vulnerability discovery techniques is that 
+%it is not needed to have a deep knowledge of the fuzzer engine to have a 
+%successful run, it is only required to select the initial input seed corpus, 
+%and to implement a fuzzing harness. Moreover, the approach is extremely easy to 
+%parallelize, so it is not uncommon for companies to setup large server farms 
+%with thousands of CPU cores dedicated to fuzzing.
+
+%Having the source code available while fuzzing immensely helps the fuzzer 
+%engine thanks to coverage information, with which the fuzzer can prune inputs 
+%much more accurately compared to \emph{black-box} fuzzing.  Furthermore, the 
+%presence of source code gives the opportunity to apply instrumentation passes, 
+%which can help the fuzzer even more.  For instance, memory sanitization helps 
+%the fuzzer find memory corruption bugs as soon as they are introduced without 
+%needing to wait for the target to crash. 
+
+%\hrule
+
+%Unfortunately, in spite of the increasing popularity of open source software, 
+%closed source modules and binaries are still much more common: on desktop, 90\% 
+%of the operating systems are closed source, and even who runs an open-source 
+%alternative usually still has many closed source components (e.g., Skype, 
+%Nvidia drivers, various DRM components in browsers, etc.). This holds true even 
+%in the phone market: while 75\% \cite{statista} of mobile users use Android or 
+%other open-source operating systems, virtually all of those devices have 
+%proprietary components already installed at the moment of purchase. Most 
+%commonly there are Google proprietary libraries like the Play API, manufacturer 
+%custom modules and firmwares (for hardware peripherals such as Bluetooth or 
+%WWAN connectivity), and much more. In many instances, those closed-source 
+%modules are installed as kernel modules or run with root privileges. To make 
+%things worse, they are often exposed to the network, creating opportunities for 
+%malware or other bad actors to take control of mobile devices.
+
+%When considering fuzzing closed source binaries, the main difficulties that 
+%arise are due to the fact that the compilation process discards a large amount 
+%of information that could be very useful while hunting bugs, such as type 
+%information, the control flow graph, array boundaries, distinction between 
+%scalars/references, and much more.  Still, there are techniques that can help 
+%instrument a binary and fuzz it in those conditions, and they all fall into a 
+%common category called \emph{Binary rewriting}.
+
+%Binary rewriting techniques can be divided into two main approaches: 
+%\emph{dynamic} rewriting and \emph{static} rewriting. Dynamic rewriting 
+%involves running the target binary in a controlled execution alongside the 
+%rewriter engine, which instruments the target binary on the fly. The advantage 
+%of this approach is that at runtime the rewriter can recover some of the 
+%information that was lost during compilation (the most important one being the 
+%distinction between scalars and references), and so do not need to rely on 
+%heuristics, and can support a very wide variety of binaries (even packed or 
+%self-modifying binaries). However, the trade-off is the overhead introduced in 
+%the process: dynamic rewriters usually have between 10x and 100x of overhead 
+%\cite{dinesh20oakland}, which has a great impact on fuzzing performance. 
+
+%On the other hand, static rewriting is the opposite approach: instrument the 
+%target binary ahead of time, using various techniques to recover as much 
+%information as possible from the code (including heuristics). Flexibility of 
+%static rewriters is more limited, as virtually none of them support edge cases 
+%such as self-modifying binaries, code that does not support standard control 
+%flow practices (like OCaml or Haskell binaries), or even code generated by a 
+%non-popular compiler. However, the overhead introduced by static rewriting is 
+%generally very low, and moreover it can support more complex instrumentation 
+%passes (while dynamic rewriters need to keep it simple for performance 
+%constraints). 
+
+%Since static rewriters lack flexibility, the aim of this thesis is to expand 
+%the domain of supported binaries of one of the recently published static 
+%rewriters, \sysname, by Dinesh et al. \cite{dinesh20oakland}. Retrowrite uses 
+%the relatively new approach of \emph{symbolization}, that produces 
+%reassemblable assembly on which instrumentation passes may be applied to.  
+%\sysname focuses on position-independent binaries to eliminate the problem of 
+%distinguishing between scalars and pointers, and manages to produce 
+%reassemblable assembly without the usage of heuristics. 
+
+%\sysname supports only \texttt{x86\_64} binaries in both user and kernel 
+%space; however, most mobile devices are running on an ARM CPU, and also some 
+%new laptop devices like the latest line of MacBooks are switching to ARM. In 
+%this thesis we will explain our efforts to add support for userland ARM64 
+%binaries, with the goal that one day we will be able to fuzz Android modules 
+%and closed source components. Furthermore, we will also explain how we ported 
+%to ARM the original instrumentation pass that the authors of \sysname 
+%implemented, \emph{AddressSanitizer}, as a proof of concept to show the 
+%usefulness of the symbolization approach. To the best of our knowledge, there 
+%were no previous attempts at statically introducing memory sanitization to ARM 
+%binaries in the past. 
+
+%We will show through benchmarks how the overhead of \sysname's 
+%instrumentation is very low when compared to source based instrumentation, and 
+%much lower than state-of-the-art dynamic instrumentation. In our experiments, 
+%we find that we are \todo{xx\%} slower than source based instrumentation, and 
+%\todo{xx\%} faster than state-of-the-art dynamic instrumentation.
+
+%Our core contributions consist in solving many challenges that static rewriting 
+%ARM binaries present, mostly spawning from the fact that ARM is a fixed size 
+%instruction set, in which pointers need to be built in multiple instructions, 
+%or located in memory in a special region called a \emph{literal pool}. A series 
+%of new problems like jump table size fixing arise from this, and, to the best 
+%of our knowledge, some of those were never analyzed before.  We present our 
+%approach to fix or workaround those problems, and will give pointers to a few 
+%alternative solutions we analyzed.
+
+%We then evaluate the performance of our ARM port of \sysname , discuss its 
+%limitations, discuss related work, and present our conclusions.
 
 
 
@@ -321,11 +444,12 @@ having the source code at hand in such a way that the binary under
 investigation keeps the same functionality. The applications of binary 
 rewriting are multiple and can be summarized as follows:
 \begin{itemize}
-	\item \textbf{Emulation}: An emulator is a special software that mimics the 
-		behaviour of a device while executing on a different device. Emulators 
-		use binary rewriting to translate system calls, instructions, memory 
-		access and all the other execution primitives from one processor 
-		architecture to another.  An example of this would be QEMU \cite{qemu}.
+	\item \textbf{Cross ISA binary translation}: A binary translator is a special
+		software that mimics the behaviour of a device while executing on a
+		different device. Emulators use binary rewriting to translate system
+		calls, instructions, memory access and all the other execution
+		primitives from one processor architecture to another.  An example of
+		this would be QEMU \cite{qemu}.
 
 	\item \textbf{Optimization}: In high performance computing domains, having 
 		a way to patch subtle things like cache misses or timing anomalies in 
@@ -334,7 +458,7 @@ rewriting are multiple and can be summarized as follows:
 		solution for run-time patching, as it is done by DynInst \cite{dyninst} 
 		or Frida \footnote{\url{https://frida.re/}}
 
-	\item \textbf{Observation}: Having an in-depth look during the execution of 
+	\item \textbf{Profiling}: Having an in-depth look during the execution of 
 		a binary by inserting profiling or tracing instructions in the middle 
 		of its code can prove to be particularly useful in many applications, 
 		like catching memory leaks (e.g., Valgrind \cite{valgrind}), coverage 
@@ -363,16 +487,15 @@ approaches that can be taken for binary rewriting, namely \emph{dynamic} and
 
 \section{Dynamic and Static Instrumentation}
 
-\subsection{Dynamic instrumentation}
-Dynamic rewriters modify and instrument the code of the target binary during 
-runtime. Usually, the target binary is executed in a controlled environment 
-side by side with the rewriter engine, which patches instructions and fixes 
-references on the go. Sometimes the rewriter engine leverages the operating 
-system's primitives to control the execution of the target, like using the 
-\texttt{ptrace} system call on Linux, but there are notable cases in which the 
-rewriter engine comes with their own instrumentation runtime (e.g., Dynamo 
-\cite{dynamo}) or implement a full featured virtual machine (e.g., STRATA 
-\cite{strata}).
+\subsection{Dynamic instrumentation} Dynamic rewriters modify and instrument
+the code of the target binary during runtime. Usually, the target binary is
+executed in a controlled environment side by side with the rewriter engine,
+which patches instructions and fixes references on the go. Sometimes the
+rewriter engine leverages the operating system's primitives to control the
+execution of the target, like using the \texttt{ptrace} system call on Linux,
+but there are notable cases in which the rewriter engine comes with their own
+instrumentation runtime (e.g., Dynamo~\cite{dynamo}) or implement a full
+featured virtual machine (e.g., STRATA~\cite{strata}).
 
 The big advantage of dynamic rewriters is the additional information that is 
 only available at run time, like the path that the execution has taken.  
@@ -385,8 +508,8 @@ running the rewriter engine alongside the target binary is expensive, and
 furthermore the frequent context switches the CPU must do to execute both make 
 the situation even worse. The total overhead for an instrumentation pass like 
 memory sanitization for a state-of-the-art dynamic rewriter like Valgrind are 
-in the order of 10x \cite{dinesh20oakland} the overhead introduced by 
-source-level memory sanitization .
+in the order of 10x~\cite{dinesh20oakland} the overhead introduced by 
+source-level memory sanitization.
 
 \subsection{Static instrumentation}
 Static rewriters process the target binary \emph{before} execution, and produce 
@@ -406,18 +529,18 @@ supports packed binaries or self-modifying code. Moreover, many rewriters
 struggle with binaries produced by deprecated compilers or with aggressive 
 optimization flags. 
 
-More recent static rewriters such as Ramblr \cite{ramblr}, Uroboros 
-\cite{uroboros}, and \sysname rely on \emph{symbolization} (sometimes also 
-called \emph{reassemblable assembly}), which work around the rigid structure of 
-binaries by substituting hard coded references with assembly labels, that are 
-more flexible and can be parsed by any generic off-the-shelf assembler.  
-\sysname's approach is particularly interesting in the fact that it avoid 
-heuristics to differentiate between scalars and references by focusing on 
+More recent static rewriters such as Ramblr~\cite{ramblr}, 
+Uroboros~\cite{uroboros}, and \sysname rely on \emph{symbolization} (sometimes 
+also called \emph{reassemblable assembly}), which work around the rigid 
+structure of binaries by substituting hard coded references with assembly 
+labels, that are more flexible and can be parsed by any generic off-the-shelf 
+assembler.  \sysname's approach is particularly interesting in the fact that it 
+avoid heuristics to differentiate between scalars and references by focusing on 
 position-independent executables (PIE). 
 
 
 
-\section{Instrumentation details}
+\section{Examples of code instrumentation}
 In this section we will go into more detail on our particular use-case of 
 instrumentation, \emph{fuzzing}, and explain what is the basis of 
 AdressSanitizer, the instrumentation pass we implemented in the ARM port of 
@@ -432,9 +555,11 @@ relies on the pseudo-random generation of test cases to give as input to a
 target binary, trying to find a specific input that makes the binary get into 
 an invalid or undefined state, as it is a good indicator of a possibly 
 exploitable vulnerability. This technique got even more popular after the 
-release of \texttt{AFL} \cite{afl}, a fuzzer that relies on coverage  
+release of \texttt{AFL}~\cite{afl}, a fuzzer that relies on coverage  
 information to generate new test cases to maximize the amount of instructions 
-tested by each new input. 
+tested by each new input, and \texttt{Honggfuzz}~\cite{honggfuzz}, a modern 
+fuzzer used to efficiently test APIs thanks to its innovative \emph{persistent 
+fuzzing} feature.
 
 Most state-of-the-art fuzzers rely on instrumentation to improve vulnerability 
 discovery, as it makes the fuzzing process much more efficient. A fuzzer that 
@@ -458,7 +583,7 @@ By keeping track of each call to \texttt{malloc} and \texttt{free}, ASan stores
 in the shadow memory a compressed layout of the valid memory in the original 
 virtual space, and sets up \emph{red zones} to highlight invalid or freed 
 memory, that trigger a security violation as soon as they are accessed. Despite 
-its non-negligible overhead (Around 73\% on average \cite{asanoverhead}), ASan 
+its non-negligible overhead (Around 73\% on average~\cite{asanoverhead}), ASan 
 is widely used thanks to the absence of false-positives, and for its usefulness 
 in detecting memory corruption vulnerabilities which are still extremely 
 popular in C/C++ codebases.
@@ -466,19 +591,11 @@ popular in C/C++ codebases.
 
 
 
-%\todo{Give some examples of instrumentation commonly used.  Get more in-depth 
-%on how certain kinds of instrumentation are particularly useful for fuzzing}
-
-
-%\todo{Notes from Mathias:
-%One paragraph each about ASan, fuzzing, and maybe CFI. Say what each
-%instrumentation looks like and reference a paper for RW.}
-
 
 \section{The ARM architecture}
 We will provide a short summary of what are the main differences between 
-\texttt{x86} and ARM that proved to be source of non trivial problems during 
-the porting of \sysname.
+\texttt{x86} and ARM, with particular focus on the ones that proved to be 
+source of non trivial problems during the porting of \sysname.
 \begin{itemize}
 	\item \emph{Fixed-size instruction set}: Contrary to \texttt{x86}, the ARM 
 		instructions are all of the same size, fixed to the value of 4 bytes.  
@@ -517,10 +634,33 @@ the porting of \sysname.
 		immediates that can be expressed with a value of 8 bits scaled by a 
 		\texttt{ROR} with a
 		4 bits value.
+	\item \emph{Alignment issues}: The stack pointer register \texttt{sp} must 
+		always be aligned to 16 bytes. Failing to do so will trigger a 
+		\texttt{SIGBUS} error and crash the application.
+	\item \emph{No push/pop}: There are no instructions in \texttt{aarch64} 
+		equivalent to the \texttt{x86} push/pop. Instead, a push is performed 
+		by storing a register on the stack and manually decreasing the stack 
+		pointer, like \verb|str x0, [sp, #-16]!|. Similarly, a pop can be 
+		performed like this \verb|ldr x0, [sp], #16|.
+
+	\item \emph{Multiple register stores/loads}: The \texttt{aarch64} 
+		architecture supports saving and loading two registers at once from 
+		memory with instructions such as \texttt{stp} and \texttt{ldp}. They 
+		are very often used by programmers and compilers thanks to the 
+		performance gain.
+
+	\item \emph{Peak performance vs energy efficiency}: While \texttt{x86} is 
+		aimed towards maximising performance and speed, one of the main 
+		objectives of the design of the \texttt{ARM} architecture is maximising 
+		energy efficiency. This is the reason behind the simplicity of the 
+		instruction set, as the CPU can be smaller and less complex compared to 
+		\texttt{x86} --- and, ultimately, less transistors translate to less 
+		power consumed. 
+
 	\item \emph{Not enough mature tools}: The popularity of ARM CPUs is still 
 		relatively new and the tooling is not mature enough, as in fact we 
-		found bugs in both the disassembler we chose to use (Capstone 
-		\cite{capstone}) and the debugger (GDB)
+		found bugs in both the disassembler we chose to use 
+		(Capstone~\cite{capstone}) and the debugger (GDB)
 \end{itemize}
 
 %\todo{Get into detail on what are the key differences between x86 and ARM. Give 
@@ -536,52 +676,73 @@ the porting of \sysname.
 %how the design fits together.
 %This section is usually 5-10 pages.
 
-In this section we will go over the design decisions that we made during the 
-development of the ARM version of \sysname. We will start from goals that we 
-put ourselves at the start of the project, and then follow up with the key 
-issues that we encountered caused by the quirks of the ARM architecture. We 
-will then go over the solution we adopted for those problems both in the 
-\emph{symbolization} and in the \emph{instrumentation} sides of \sysname. 
+
+We will now go over the goals that that we put oursevles at the start of the 
+project, explain which were the key issues that we had to face due to the 
+quirks of the ARM architecture, and the solutions we adopted to overcome those 
+problems both in the \emph{symbolization} and in the \emph{instrumentation} 
+sides of \sysname.
+
 
 \section{Goals}
 
+Our goal is to develop a zero-overhead binary translator for \texttt{aarch64} 
+executables that enables powerful translation and overcomes challenges spawned 
+by the ARM ISA.\@ It should also support COTS software and scale well to large 
+binaries. Finally, its implementation should be modular in such a way as to 
+avoid limiting any kind of instrumentation.
 
-Our goal is to develop a modular platform on which it is easy to develop 
-instrumentation passes for ARM binaries, with the example implementation of a 
-memory sanitization pass.  We identify the following requirements that our 
-solution should satisfy:
+%\hrule
 
-\begin{itemize}
-	\item \textbf{RQ1:} The implementation should supports COTS binaries, and 
-		should scale well to large binaries.
-	\item \textbf{RQ2:} The symbolization and instrumentation processes must 
-		not hinder the intrinsic functionality of the binary being rewritten.
-	\item \textbf{RQ3:} The memory safety instrumentation pass we develop must 
-		be competitive in performance and functionality with its source-based 
-		counterpart.
+%Our goal is to develop a modular platform on which it is easy to develop 
+%instrumentation passes for ARM binaries, with the example implementation of a 
+%memory sanitization pass.  We identify the following requirements that our 
+%solution should satisfy:
 
-
-\end{itemize}
-
-%\todo{Give a rundown of specific goals that we set ourselves at the start of 
-%the project:}
 %\begin{itemize}
-	%\item Study the ARM architecture and the main differences from x86
-	%\item Study the codebase of the \sysname project, understand the theory 
-		%behind it and its implementation
-	%\item Write tests to ensure the robustness of the implementation
-	%\item Implement and introduce support for ARM in the \sysname project
-	%\item Develop a sample instrumentation pass (BASAN)
-	%\item Evaluate the resulting implementation against state-of-the-art 
-		%techniques
+	%\item \textbf{RQ1:} The implementation should supports COTS binaries, and 
+		%should scale well to large binaries.
+	%\item \textbf{RQ2:} The symbolization and instrumentation processes must 
+		%not hinder the intrinsic functionality of the binary being rewritten.
+	%\item \textbf{RQ3:} The memory safety instrumentation pass we develop must 
+		%be competitive in performance and functionality with its source-based 
+		%counterpart.
+
+
 %\end{itemize}
-	 
+
+\section{System architecture}
+
+\begin{figure}[h]
+\includegraphics[width=15cm]{symbolizer.jpg}
+\centering
+\caption{Overview of the structure of \sysname}
+\end{figure}
+
+\sysname is divided into two main components: the symbolizer and the 
+instrumentaion.  The symbolizer takes care of loading and analyzing a binary, 
+but its main job is substituting every reference in the target with assembly 
+labels, plus some minor tasks to keep the original functionality of the binary 
+intact. One or more instrumentation passes can be enabled to apply 
+transformations to the resulting binary. For now, only a single pass is 
+implemented (BASan), but many more can be easily added.
 
 \section{Key Issues}
-We will now go over the issues we encountered while porting \sysname to the 
-ARM architecture that we briefly mentioned in the previous chapter.  
+The outstanding challenges of statically analyzing and instrumenting ARM 
+binaries can be summarized as follows:
 
-\subsection{Fixed size instruction set}
+\begin{itemize}
+	\item Detecting and fixing pointer constructions.
+	\item Detecting and symbolizing jump tables.
+	\item Supporting extensive instrumentation by enlarging jump tables.  
+		\todo{Not 100\% sure about this one, maybe put it together with the 
+		second item?}
+\end{itemize}
+
+In the following pages we will get into detail for each one of those issues, 
+and explain the reasoning behind our solution.
+
+\subsection{Pointer construction}
 The Aarch64 instruction set is defined as \emph{fixed size}, because every 
 instruction is large exactly 4 bytes. This makes the CPU design simpler,
 helps keeping memory always aligned, and permits the CPU to fetch multiple 
@@ -603,24 +764,24 @@ While this is a simple and straightforward approach, very useful in the case of
 hand-written assembly, this requires an additional memory access that may 
 impact performance in the long run. Furthermore, the assembly will fail if it 
 is not possible to store a literal pool in the given range, such as in the case 
-of a function larger than 2MB. In that case, it is up to the programmer to find 
-a suitable spot for the literal pool, by manually specifying its location with 
-the \texttt{.ltorg} assembly directive. It is often recommended to store 
-literal pools directly after non-conditional jumps to avoid executing them 
-\cite{literalpools}.
+of a function larger than 2MB.\@ In that case, it is up to the programmer to 
+find a suitable spot for the literal pool, by manually specifying its location 
+with the \texttt{.ltorg} assembly directive. It is often recommended to store 
+literal pools directly after non-conditional jumps to avoid executing 
+them~\cite{literalpools}.
 
 The second solution is to build pointers using multiple instructions and basic 
 arithmetic primitives. Aarch64 provides instructions such as \texttt{adrp 
 <reg>, pointer}, which loads the base page of a pointer into a register. It is 
-a PC-relative instruction , and is able to target pointers in the $\pm$ 4GB 
-range. In other words, the \texttt{adrp} instruction can point only to memory 
-locations that are 4KB aligned. Usually the instruction can be followed by an 
+a PC-relative instruction, and targets pointers in the $\pm$ 4GB range.  In 
+other words, the \texttt{adrp} instruction can point only to memory locations 
+that are 4KB aligned. Usually the instruction can be followed by an 
 \texttt{add}, a \texttt{sub} or an offset-based load such as \texttt{ldr 
 <register>, [<base\_page>, offset]}. This second way, while more contrived and 
 certainly harder to read, is faster than the first one as it does not require a 
 memory access, and also often benefits from custom hardware optimizations (such 
-as in the Cortex A72, one of the most common ARM CPUs 
-\cite{pointeroptimizations}). 
+as in the Cortex A72, one of the most common ARM 
+CPUs~\cite{pointeroptimizations}). 
 
 \subsubsection{The global variable problem}
 For the reasons stated above, compilers generally use the second option, 
@@ -675,12 +836,12 @@ to understand which of those is the correct one.
 This final solution scales really well, as proved by the fact that we rewrote 
 very large binaries and successfully ran them through long benchmarks. For more 
 details on how the exclusion algorithm works, see the next chapter, 
-Implementation.  \todo{ maybe go into detail and explain the section alignment 
+Implementation.  \todo{maybe go into detail and explain the section alignment 
 trick, and what is the reason for why it works, that is retrowrite will never 
 instrument data sections}
 
 
-\subsection{Jump Tables}
+\subsection{Jump table target recovery}
 There is a big difference in how jump tables in ARM are implemented compared to 
 \texttt{x86}. In fact, in \texttt{x86}, a jump table is represented through a 
 list of code pointers in the \texttt{.rodata} section. The assembly generated 
@@ -691,7 +852,7 @@ On ARM, things are different: jump tables are stored as a list of
 \emph{offsets} from the base case (case number 0) in memory. The compiler 
 generates assembly that fetches the correct offset based on the case number 
 from the list in memory, adds the offset to the base case, and jumps to the 
-resulting value. Listing \ref{lst:jmptbl} shows an example of jump table access 
+resulting value. Listing~\ref{lst:jmptbl} shows an example of jump table access 
 in \texttt{aarch64}. The first two instructions build a global pointer to where 
 the jump table is stored in memory. In line 3 the offset to the corresponding 
 case is loaded into register \texttt{w1}, and then later added to the base case 
@@ -752,7 +913,7 @@ Backward-slicing until a comparison operation is performed on the marked
 register, bounding the number of cases to an absolute number, turned out to be 
 a very reliable solution.  
 
-\subsubsection{Jump table offset overflow}
+\subsection{Enlarging jump tables}
 Another problem spawned from how jump tables are represented in ARM comes up 
 when instrumenting a function that contains a jump table. In fact, it is very 
 likely that adding too much instrumentation inside a single case could 
@@ -776,7 +937,7 @@ solutions:
 		offsets of a jump table represent the distance between a case and the 
 		base case expressed in bytes divided by 4. This is because each 
 		instruction is 4 bytes long, and it would not make sense to point 
-		inside an instruction. In fact, in Listing \ref{lst:jmptbl}, line 5, we 
+		inside an instruction. In fact, in Listing~\ref{lst:jmptbl}, line 5, we 
 		can see how the offset is shifted by 2 to the left (so multiplied by 
 		4). This is automatically done by the compiler. However, we can use the 
 		same technique the compiler uses and store offsets divided by 8, 16 or 
@@ -800,26 +961,69 @@ which is a very desirable property in binary rewriting.
 \todo{not sure where to put this subsection. Maybe delete it, it's a really 
 simple issue, maybe not worth discussing}
 When adding substantial amount of instrumentation to a binary, some pc-relative 
-branches can break, like the instruction \texttt{cbz}, which is able to jump to 
-addresses not farther than 1MB. 
+branches can break, like the instruction \texttt{cbz}, which cannot jump to 
+addresses farther than 1MB. 
 
 In this cases we fix the relevant instruction by making them point to a some 
 additional instrumentation containing a trampoline to the original target of 
 the branch. 
 
 
+
+
+\subsection{Instrumentation register saving}
+
+We designed \sysname to support any kind of instrumentation, without 
+sacrificing performance and functionality. We realized though that many 
+different kinds of instrumentation require some intermediate calculations to be 
+saved in registers. This was causing noticeable overhead in the 
+instrumentation, as registers needed to be saved on the stack and restore in 
+every instrumented location. 
+
+To avoid this additional overhead, we implemented a static analysis of register 
+usage for every function, with instruction-level granularity (i.e., the result 
+of the analysis is the set of registers that can be freely used without saving 
+them for every instruction inside a given function). The instrumentation can 
+then use the set of free registers without worrying about hindering the 
+original functionality of the binary. 
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Implementation}
+%%%%%%%%%%%%%%%%%%%%%%%%
+%The implementation covers some of the implementation details of your project.
+%This is not intended to be a low level description of every line of code that
+%you wrote but covers the implementation aspects of the projects.
+
+%This section is usually 3-5 pages.
+
+
 \section{Symbolizer}
-\todo{Add a figure for the system overview here, with a short explanation on 
-how it is split into a single Symbolizer and multiple possible instrumentation 
-modules}
+\todo{Go into the nitty-gritty details of my horrible hackish implementation, }
 
-\todo{Not really sure what to write here, as the ideas behind the symbolization 
-process are basically the same to x86, nothing new/fancy here.}
+\subsection{Global variables}
+\todo{}
+\subsubsection{How were they detected}
+\subsubsection{How were they fixed}
+\subsubsection{The literal pool dilemma}
 
-
+\subsection{Jump Tables}
+\subsubsection{How were they detected}
+\subsubsection{Jump Table symbolization}
+\subsubsection{Jump Table enlargment}
+\subsubsection{Jump Table cases nop padding}
+%\todo{Explain the following:}
+%\begin{itemize}
+	%\item List all ideas we had
+	%\item Explain why we chose to implement the ungodly hack of expanding them 
+	%\item also, nop padding between cases
+%\end{itemize}
 
 
 \section{Instrumentation (BASan)}
+\todo{This section probably needs to be rewritten from scratch, it was in the 
+design chapter before}
 The ASan instrumentation was designed to be compatible with the 
 AddressSanitizer libraries provided by Google, \texttt{libasan}. We carefully 
 selected shadow memory offsets and sizes to match those included in 
@@ -840,7 +1044,7 @@ if (shadow_value) {
 }
 \end{lstlisting}
 
-Listing \ref{lst:asan} shows the ASan checking algorithm in high level. To 
+Listing~\ref{lst:asan} shows the ASan checking algorithm in high level. To 
 implement it as an instrumentation pass, we manually wrote assembly code that 
 matched its functionality and could be adapted to both reads and stores.  
 Different versions of ASan snippets were developed depending on the size of the 
@@ -867,9 +1071,9 @@ differences:
 		compile-time with the source code at hand. However, \sysname works only 
 		on binaries and thus is forced to instrument all memory accesses.
 \end{itemize}
-Despite the following limitations, the BASan instrumentation pass is able to 
-provide the same core functionality of the original ASan compiler pass (memory 
-sanitization on the heap), and with very little additional overhead.
+Despite the following limitations, the BASan instrumentation pass provides the 
+same core functionality of the original ASan compiler pass (memory sanitization 
+on the heap), and with very little additional overhead.
 
 \subsubsection{Optimization: register savings}.
 The snippets of assembly used to implement ASan memory checking require some 
@@ -885,7 +1089,7 @@ function of the binary, in such a way that at any given instruction we know
 which registers can be freely used and which cannot be modified without 
 hindering the correct execution of the binary. Then, when inserting the 
 instrumentation, we modify the snippets in such a way that they will try to use 
-as many "free" registers as possible, while saving the others on the stack.
+as many `free' registers as possible, while saving the others on the stack.
 
 Of particular note is the saving of the value of register \texttt{ncvz}, which 
 holds the condition flags in \texttt{aarch64}. This register is always saved 
@@ -893,44 +1097,6 @@ and restored at each instrumented location, as all ASan snippets contain a
 conditional branch for the error checking. 
 
 \todo{If needed, put other optimizations here, like batching}
-
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{Implementation}
-%%%%%%%%%%%%%%%%%%%%%%%%
-%The implementation covers some of the implementation details of your project.
-%This is not intended to be a low level description of every line of code that
-%you wrote but covers the implementation aspects of the projects.
-
-%This section is usually 3-5 pages.
-
-
-\section{Symbolizer}
-\todo{Go into the nitty-gritty details of my horrible hackish implementation, }
-
-\subsection{Global variables}
-\todo{}
-\subsubsection{How were they detected}
-\subsubsection{How were they fixed}
-\subsubsection{The literal pool dilemma}
-
-\subsection{Jump Tables}
-\subsubsection{How were they detected}
-\todo{Pseudo-emulating ARM binaries to detect jump tables}
-\subsubsection{How were they fixed}
-%\todo{Explain the following:}
-%\begin{itemize}
-	%\item List all ideas we had
-	%\item Explain why we chose to implement the ungodly hack of expanding them 
-	%\item also, nop padding between cases
-%\end{itemize}
-
-\section{ASan instrumentation}
-\todo{Overview of the ASan algorithm, how it was hand-translated to ARM 
-assembly}
-\todo{Various optimizations that were introduced to lower instrumentation 
-overhead}
 
 
 %%%%%%%%%%%%%%%%%%%%
@@ -998,23 +1164,23 @@ about, will be expanded later}
 
 
 \textbf{Dynamic rewriters in general}:\\
-First, the good ol' ones: \texttt{PIN}\cite{pin}, 
-\texttt{Valgrind}\cite{valgrind} and \texttt{DynInst}\cite{dyninst}.
+First, the good ol' ones: \texttt{PIN}~\cite{pin}, 
+\texttt{Valgrind}~\cite{valgrind} and \texttt{DynInst}~\cite{dyninst}.
 
-More recently, \texttt{Multiverse} \cite{multiverse}, \texttt{Frida} and 
+More recently, \texttt{Multiverse}~\cite{multiverse}, \texttt{Frida} and 
 \texttt{DynamorIO} are interesting examples.
 
-\texttt{QASAN}\cite{qasan} is similar to \sysname's BAsan, much slower but 
+\texttt{QASAN}~\cite{qasan} is similar to \sysname's BASan, much slower but 
 also much more portable (works on any binary supported by QEMU)
 
 
 
 \textbf{Static rewriters that use lifting to IR}:\\
-\texttt{McSema} \cite{mcsema} is a great example of LLVM IR lifting approach, 
+\texttt{McSema}~\cite{mcsema} is a great example of LLVM IR lifting approach, 
 also particularly nice as it supports C++ exceptions
 
 \textbf{Static rewriters that use trampolines}:\\
-\texttt{E9patch}\cite{e9patch} uses only trampolines, no need to recover 
+\texttt{E9patch}~\cite{e9patch} uses only trampolines, no need to recover 
 control flow, but also noticeable overhead
 
 %\todo{Also say that trampolines are especially effective on ARM because every 
@@ -1022,18 +1188,17 @@ control flow, but also noticeable overhead
 %instructions shorter than a jmp like in x86}
 
 \textbf{Static rewriters that use symbolization}:\\
-\texttt{Uroboros}\cite{uroboros} and \texttt{Ramblr}\cite{ramblr} are the first 
-reassemblable assembly approaches (symbolization), \sysname 
-\cite{dinesh20oakland} (x86 version)
+\texttt{Uroboros}~\cite{uroboros} and \texttt{Ramblr}~\cite{ramblr} are the 
+first reassemblable assembly approaches (symbolization), 
+\sysname~\cite{dinesh20oakland} (x86 version)
 
 \textbf{Static rewriters aimed at ARM binaries}:\\
-\texttt{Repica} \cite{repica} is probably the most recent addition to binary 
+\texttt{Repica}~\cite{repica} is probably the most recent addition to binary 
 rewriters aimed at ARM binaries.  
 
-\todo{Maybe add Bistro ? } \cite{bistro}
+\todo{Maybe add Bistro?}~\cite{bistro}
 
-For more check out recent surveys on the area of binary rewriting 
-\cite{binaryrewritingsurvey}
+For more check out recent surveys on the area of binary rewriting~\cite{binaryrewritingsurvey}
 
 }
 
