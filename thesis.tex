@@ -26,6 +26,7 @@
 \usepackage{soul}
 \usepackage{hyperref}
 \usepackage{listings} 
+\usepackage{caption}
 
 \definecolor{lgray}{rgb}{0.92,0.92,0.92}
 
@@ -34,7 +35,7 @@
   framexleftmargin=5pt,
   framexrightmargin=5pt,
   %framesep=100pt,
-  basicstyle=\large,      
+  basicstyle=\linespread{1}\ttfamily\large,      
   numbers=left,                  
   numberstyle=\small\color{gray},  
   numbersep=15pt,
@@ -49,7 +50,7 @@
   commentstyle=\color{dkgreen}, 
   stringstyle=\color{mauve},   
   escapeinside={\%*}{*)},     
-  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb}
+  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, ldr}
 }
 
 
@@ -818,15 +819,204 @@ original functionality of the binary.
 
 
 \section{Symbolizer}
-\todo{Go into the nitty-gritty details of my horrible hackish implementation, }
+Symbolization is the process of substituting pointers with assembly symbols that can be later understood by a general-purpose assembler. As mentioned before, this requires detection of every single pointer and control flow mechanism used in the binary. 
 
-\subsection{Global variables}
-\todo{}
-\subsubsection{How were they detected}
-\subsubsection{How were they fixed}
-\subsubsection{The literal pool dilemma}
+Listing \ref{lst:diffass}  shows the output of the symbolization process on a small example assembly snippet.
 
-\subsection{Jump Tables}
+
+\begin{figure}[h]
+\label{lst:diffass}
+\begin{minipage}{.45\textwidth}
+
+\begin{lstlisting}
+0x400: adr  x0, 0xab0000
+0x404: cmp  x1, 20
+0x408: b.eq 4
+0x40c: ret
+0x410: ret
+\end{lstlisting}
+
+
+\end{minipage}\hfill
+\begin{minipage}{.45\textwidth}
+
+\begin{lstlisting}
+.LC400: adr  x0, .LCab0000
+.LC404: cmp  x1, 20
+.LC408: b.eq .LC410
+.LC40c: ret
+.LC410: ret
+\end{lstlisting}
+
+\end{minipage}
+\captionof{lstlisting}{Assembly in the original binary (left), and after symbolization (right)}
+\end{figure}
+
+
+
+\subsection{Pointer Construction}
+
+\subsubsection{Detection and recovery of pointers}
+
+Standard compilers (clang, gcc) that target \texttt{aarch64} use a common 
+pattern for building pointers: an \texttt{adrp} instruction, loading the page 
+of the destination address, and either an \texttt{add} or similar arithmetic 
+instruction to fix the offset inside the page, or a memory operation like 
+\texttt{ldr} or \texttt{str} that include the offset inside the page 
+(e.g.\texttt{ldr x0, [x1, 256]}).
+
+Initially, we implemented a pattern matching algorithm, 
+
+Our initial approach was based on pattern matching. We first built a list of 
+possible pointer building locations, which meant all \texttt{adrp} 
+instructions. Next, we tried to find all \texttt{add}, \texttt{ldr}, or 
+\texttt{str} instructions (or their variants) that used the register that was 
+partially built with the \texttt{adrp}.  This approach, while working with the 
+large majority of pointer construction, was not enough because of the following 
+difficulties:
+\begin{itemize}
+	\item Multiple pointers built with the same \texttt{adrp}: As can be seen 
+		in \autoref{pointers}, sometimes the same \texttt{adrp} page loading 
+		instruction is used for multiple pointer constructions, sometimes very 
+		far away from each other
+	\item Moving base page register: another difficulty was that sometimes the 
+		register used to store the base page changed in the middle of the 
+		pointer construction, as can be seen in \autoref{pointers2}
+	\item Base register stack saving: in very large functions, sometimes the 
+		base registers were loaded at the start and saved on the stack, to be 
+		later restored and used for pointer building. An example is present in 
+		\autoref{pointers3}
+\end{itemize}
+
+\begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \texttt{adrp} instruction}]
+adrp x0, 0xab0000
+add  x1, x0, 256   // pointer 0xab100
+ldr  x2, [x0, 512] // pointer 0xab200
+add  x0, x0, 128   // pointer 0xab080
+\end{lstlisting}
+\begin{lstlisting}[float,floatplacement=H,label=pointers2,caption={Example of changing register during
+pointer construction}]
+adrp x0, 0xab0000
+mov  x1, x0
+add  x1, x1, 256   // pointer 0xab100
+\end{lstlisting}
+\begin{lstlisting}[float,floatplacement=H,label=pointers3,caption={Example of base page register stack
+saving}]
+adrp x0, 0xab0000
+str  x0, [sp, -16!]
+...
+ldr  x3, [sp, 16!]
+add  x3, x3, 512   // pointer 0xab200
+\end{lstlisting}
+
+Adjusting our pattern matching algorithm to account for all those difficulties
+was increasingly difficult. We implemented a light data flow recovery algorithm
+that statically analyzed the control flow and the stack usage of a given
+function, following around the register used for the \texttt{adrp} and checking
+for its usage.  The implementation was difficult, error prone and full of edge
+cases, and we started to have some doubts on the soundness of our pattern
+matching solution. 
+
+Our second approach took advantage of the fact that \sysname does not 
+instrument data sections, and the vast majority of global variables point to 
+those. Instead of trying to parse the pointer building patterns, we try to 
+guess which section of the original binary an \texttt{adrp} could be pointing 
+to. Since the \texttt{adrp} loads a base page, and then a page offset is added 
+\todo{or subtracted too?}, the sections that can be addressed by a single 
+pointer constructions are those that overlap the \texttt{adrp} address $\pm$ 1 
+KB.\@ Since all sections except \texttt{.text} are not instrumented, if we are 
+able to narrow down the possible target of a pointer construction to a single 
+section, we can symbolize the pointer by just adjusting the starting 
+\texttt{adrp} to correctly address the same symbolized section as in the 
+original binary, since offsets used by \texttt{add} or \texttt{ldr} will stay 
+the same.
+For example, if we encounter an instruction \texttt{adrp x0, 0xab000} and the
+only section close enough is the \texttt{.bss} that starts at address
+\texttt{0xab256}, we can symbolize every pointer construction on \texttt{x0} by
+changing the above \texttt{adrp} to \texttt{ldr x0, =(.bss - 256)}.
+
+This new approach was easier to implement and also more stable, as it did not
+incur in any of the problems stated above. However, it was not always
+applicable, as especially in smaller binaries multiple sections could be in the
+$\pm$ 1 KB range from the \texttt{adrp} destination address; in that case, we
+used some simple data flow analysis to exclude as many as possible. If there 
+still is more than one possible section, then we fall back to the old pattern 
+matching solution. In our experience, we fall back to pattern matching less 
+than 1\% of the time.
+
+\subsection{Symbolization of pointers}
+
+After detection of a pointer construction in the target binary, it is still not 
+trivial how to symbolize a pointer. There are two solutions to this problem: 
+using \emph{literal pools} and using pointer construction.
+
+\subsubsection{Literal pools}
+
+A literal pools is a special region of memory in a binary that stores absolute
+addresses. It is widely used in \texttt{ARM} to overcome the challenge of not
+being able to store a pointer in a single instruction. 
+
+The \texttt{ARM} assembly specification~\cite{literalpoolsarm} explains
+\todo{use a better term here} that the assembler will store a pointer in a
+literal pool when using the following construct: \texttt{ldr x0, =<pointer>}.
+The \texttt{=<pointer>} part will be assembled with a pc-relative load to the
+nearest literal pool that contains the full pointer address.
+The location of the literal pool must be manually specified in assembly
+through the \texttt{.ltorg} directive. Usually, literal pools are stored
+between functions in the \texttt{.text} sections. Since the pc-relative load can only 
+target addresses in the $\pm$ 1 MB range, literal pools must be stored 
+inside functions if they are larger than 2 MB. 
+
+In our first implementation we used literal pools to symbolize pointers, but we 
+detected noticeable overhead introduced even without instrumentation added. The runtime
+of binaries without instrumentation was around 10\% compared to the original binaries. 
+The reason behind the additional overhead is twofold: first, each pointer retrieved through
+literal pools requires a memory access each time; secondly, literal pools occupy precious
+space in the \texttt{.text} section causing more cache misses than necessary. 
+
+
+\subsubsection{Pointer construction symbolization}
+
+To avoid the overhead introduced by the usage of literal pools, we decided to
+use pointer construction ourselves. The symbolization of a pointer construction
+is composed of two parts: the symbolized \texttt{adrp} base page loading and
+the symbolized \texttt{add} for the page offset. An example of such process can
+be found in Listing \ref{lst:construction}. The \texttt{adrp} is symbolized by just
+substituting its argument with the symbolized counter part.  The page offset part,
+instead, is symbolized through a special assembler directive that evaluates to the
+last 12 bits of the specified assembly label (and 12 bits are enough to specify
+the offset inside a page). 
+
+\begin{figure}[h]
+\label{lst:construction}
+\begin{minipage}{\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+0x400: adrp  x0, 0xab000
+0x404: add x0, x0, 256              // pointer to 0xab100
+\end{lstlisting}
+\end{minipage}
+
+\begin{minipage}{\textwidth}
+	\begin{lstlisting}[basicstyle=\ttfamily\small]
+.LC400: adrp  x0, .LCab100          // base page 
+.LC404: add x0, x0, :lo12:.LCab100  // page offset
+\end{lstlisting}
+
+\end{minipage}
+	\captionof{lstlisting}{Example pointer construction in the original binary (above) and symbolized pointer construction (below)}
+\end{figure}
+
+
+
+\section{Jump Tables}
+
+Switch statements in \texttt{ARM} binaries are stored as a table of offsets, instead of absolute addresses like in \texttt{x86}. This makes symbolizing them particularly tricky. 
+
+\subsection{Detection of jump tables}.
+Unlike \texttt{x86}, in \texttt{ARM} we cannot rely on heuristic such as looking for 
+lists of valid instruction pointers in the \texttt{.rodata} section. 
+
+
 \subsubsection{How were they detected}
 \subsubsection{Jump Table symbolization}
 \subsubsection{Jump Table enlargment}
