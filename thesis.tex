@@ -817,9 +817,18 @@ original functionality of the binary.
 
 %This section is usually 3-5 pages.
 
+\mat{Add a lead in that describes the key parts of the implementation.}
 
 \section{Symbolizer}
+
 Symbolization is the process of substituting pointers with assembly symbols that can be later understood by a general-purpose assembler. As mentioned before, this requires detection of every single pointer and control flow mechanism used in the binary. 
+
+\mat{This seems to be repetitive. Information what a symbolizer is should be
+either in the background or related work.}
+
+\mat{What is the key problem here? That should be the focus and how you address
+them. Try to list the key issues and then in the subsection describe how you
+solved them}
 
 Listing \ref{lst:diffass}  shows the output of the symbolization process on a small example assembly snippet.
 
@@ -866,6 +875,7 @@ instruction to fix the offset inside the page, or a memory operation like
 (e.g.\texttt{ldr x0, [x1, 256]}).
 
 Initially, we implemented a pattern matching algorithm, 
+\mat{Runaway sentence?}
 
 Our initial approach was based on pattern matching. We first built a list of 
 possible pointer building locations, which meant all \texttt{adrp} 
@@ -887,6 +897,8 @@ difficulties:
 		later restored and used for pointer building. An example is present in 
 		\autoref{pointers3}
 \end{itemize}
+
+\mat{Good summary of issues}
 
 \begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \texttt{adrp} instruction}]
 adrp x0, 0xab0000
@@ -916,6 +928,8 @@ function, following around the register used for the \texttt{adrp} and checking
 for its usage.  The implementation was difficult, error prone and full of edge
 cases, and we started to have some doubts on the soundness of our pattern
 matching solution. 
+\mat{Why was it difficult? You say it's difficult but don't share the details.
+Without argument why the adjective is not useful.}
 
 Our second approach took advantage of the fact that \sysname does not 
 instrument data sections, and the vast majority of global variables point to 
@@ -934,6 +948,10 @@ For example, if we encounter an instruction \texttt{adrp x0, 0xab000} and the
 only section close enough is the \texttt{.bss} that starts at address
 \texttt{0xab256}, we can symbolize every pointer construction on \texttt{x0} by
 changing the above \texttt{adrp} to \texttt{ldr x0, =(.bss - 256)}.
+
+\mat{Such a 'first we did x then we did y' is OK for a report. For a paper you
+would highlight your latest and final approach and mention only why other
+approaches do not work.}
 
 This new approach was easier to implement and also more stable, as it did not
 incur in any of the problems stated above. However, it was not always
@@ -1011,12 +1029,14 @@ the offset inside a page).
 \section{Jump Tables}
 
 Switch statements in \texttt{ARM} binaries are stored as a table of offsets, instead of absolute addresses like in \texttt{x86}. This makes symbolizing them particularly tricky. 
+\mat{Either be a bit more verbose/detailed about the problem or reference the
+section where you share the details.}
 
 \subsection{Detection of jump tables}.
 Unlike \texttt{x86}, in \texttt{ARM} we cannot rely on heuristic such as looking for 
 lists of valid instruction pointers in the \texttt{.rodata} section. 
 
-
+\mat{TODO... }
 \subsubsection{How were they detected}
 \subsubsection{Jump Table symbolization}
 \subsubsection{Jump Table enlargment}
