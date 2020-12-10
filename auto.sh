@@ -16,6 +16,6 @@ echo "vim --servername $1 --remote +%{line} %{input}"
 zathura $1 -x "vim --servername $1 -c \"let g:syncpdf='$1'\" --remote +%{line} %{input}" &
 
 
-ls *.tex *.sty | entr -s "rm thesis.aux; timeout 5 pdflatex -synctex=1 --shell-escape thesis.tex"
+ls *.tex *.sty | entr -rs "rm ${1%pdf}aux; timeout 5 pdflatex -synctex=1 --shell-escape ${1%pdf}tex"
 
 #ls *.tex *.sty | entr -s "timeout 10 make"

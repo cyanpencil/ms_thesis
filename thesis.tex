@@ -27,6 +27,9 @@
 \usepackage{hyperref}
 \usepackage{listings} 
 \usepackage{caption}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{bm}
 
 \definecolor{lgray}{rgb}{0.92,0.92,0.92}
 
@@ -62,12 +65,22 @@
 \newcommand{\sysname}{RetroWrite\xspace}
 
 %\newcommand{\todo}[1]{\colorbox{cyan}{\parbox{0.9\textwidth}{#1}}}
-\newcommand{\todo}[1]{%
-	\begingroup 
-	\sethlcolor{cyan}%
-	\hl{TODO: #1}%
-	\endgroup
-}
+%\newcommand{\todo}[1]{%
+	%\begingroup 
+	%\sethlcolor{cyan}%
+	%\hl{TODO: #1}%
+	%\endgroup
+%}
+%\newcommand{\mat}[1]{%
+	%\begingroup 
+	%\sethlcolor{red}%
+	%\hl{MAT: #1}%
+	%\endgroup
+%}
+
+\DeclareRobustCommand{\todo}[1]{{\sethlcolor{cyan}\hl{TODO: #1}}}
+\DeclareRobustCommand{\mat}[1]{{\sethlcolor{red}\hl{MAT: #1}}}
+
 
 
 \dedication{ 
@@ -1136,29 +1149,296 @@ conditional branch for the error checking.
 
 %This section is usually 5-10 pages.
 
-\section{Experiment overview}
-\todo{Explain our setup, the hardware we used, what we were measuring.}
 
-\todo{Talk a bit on also the difficulties caused by the nature of the 
-benchmarks, namely very long times (up to 48 hours, and probably more now that 
-I have CloudLab :D ), very high RAM usage, and so on.}
+In this section we validate the claims that we made earlier by performing experiments.
+We show that \sysname can symbolize and instrument ARM binaries with the performance of
+source based instrumentation without compromises on its scalability.
 
-\todo{(OPTIONAL) Talk a bit on how those difficulties were approached, with the 
-very strict collection of experiment metadata using Github CI and the telegram 
-bot.}
+\section{Setup and Hardware} 
+We ran experiments on two machines:
+\begin{itemize}
+	\item A raspberry Pi 4B, with a Cortex A-72 (1.5GHz) CPU and 4GB of RAM
+	\item An Atlas/A57 (2.4GHz) CPU with 64 GB of RAM
+\end{itemize}
 
-\section{SPEC CPU}
-\todo{Explain how much do I hate the SPEC CPU benchmark, who developed it, the 
-crazy fact that it is the accepted state of the art method for benchmarking 
-single-core performance, how counter-intuitive their directory structure, 
-config files, and bash scripts are.  /s}
+To benchmark the performance of rewritten binaries, we used the SPEC CPU 2017
+benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
+\sysname does not (yet) support the symbolization of C++ exceptions. The list of the
+benchmarks can be seen in \autoref{tabularasa}.  All of the benchmarks were run on
+the Atlas machine, while some of the benchmarks were not run on the raspberry because
+4GB of RAM were not enough to avoid using swap memory, compromising the results
+of the experiments. The Atlas machine was generally hosted by the CloudLab
+pojerct~\cite{cloudlab} in their Utah data center. 
 
-\section{Results}
-\todo{Present  plots and tables, and a detailed explanation on each one.
-Make sure to respect the style of Mathias' previous papers/theses, to avoid 
-getting him unnecessarily angry}
+The benchmarks were compiled with the gcc compiler version 7.5.0 on a
+freshly installed Ubuntu 18.04 operating system. The following command line
+flags were used to compile the baseline benchmark binaries: \texttt{-O3
+-fno-tree-loop-vectorize -fno-unsafe-math-optimizations -fgnu89-inline -fno-strict-aliasing}, in addition to the flags to produce position independent executables. 
+.  The original authors of the x86 version of \sysname demonstrated the
+scalability of their symbolization approach by rewriting binaries up to 12MB;\@
+we will go a step further and show that \sysname has no trouble at all
+rewriting a binary as big as gcc\_r (62MB).
 
-\todo{Compare it to state-of-the-art dynamic instrumentation (QEMU).}
+We evaluate the performance of the symbolization engine by running the benchmarks
+with the binaries of each benchmark rewritten by \sysname without adding any kind
+of instrumentation. We then evaluate the performance of our memory sanitization
+instrumentation pass by comparing it against its source based equivalent (\texttt{-fsanitize=address} in the compiler flags), and against the equivalent functionality implemented
+using a dynamic instrumentation approach, by using Valgrind with the memory sanitization
+option (\texttt{valgrind --tool=memcheck}).
+
+
+\begin{table}
+\centering
+\begin{tabular}{lr}
+\toprule
+	\textbf{Name} & \textbf{Size}\\
+\toprule
+\texttt{cpugcc\_r   } & 63 MB\\
+\texttt{perlbench\_r} \hspace{2em} &   11 MB \\
+\texttt{imagick\_r  } & 2.4 MB\\
+\texttt{x264\_r } &  687 KB\\
+\texttt{ldecod\_r   } & 713 KB\\
+\texttt{nab\_r      } & 249 KB\\
+\texttt{xz\_r   } &  244 KB \\
+\texttt{mcf\_r      } & 45 KB\\
+\texttt{lbm\_r      } & 23 KB \\
+\bottomrule
+\end{tabular}
+\caption{Name and size of the SPEC CPU2017 benchmarks written in C.}
+\label{tabularasa}
+\end{table}
+
+\section{Symbolization performance}
+
+As can be seen from \autoref{plot1} and \autoref{plot2}, the overhead of the
+symbolization process is very small. Detailed results can be found in
+\autoref{labellatabella}.  The average overhead is 0.76\%, in line with other
+state of the art static rewriters~\cite{egalito}.  This kind of overhead is
+probably due to unoptimal realignment of sections and code, as we produce
+position independent assembly and we do not optimize for cache hits or anything
+else, leaving this kind of work entirely to the linker. Another important
+factor for the overhead is that each pointer building instruction \texttt{adrp}
+is symbolized with two instructions (an \texttt{adrp} followed by an
+\texttt{add}); so for each global variable access the binary makes the CPU will
+lose a clock cycle (probably less, as many ARM CPUs have hardware optimizations
+for \texttt{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
+
+Interestingly, we managed to have such a low overhead only after the
+elimination of literal pools to symbolize pointer building. When using literal
+pools, the average overhead was 3.5\%, with the maximum value being at 10.7\%
+for \texttt{perlbench}. 
+
+A noticeable slowdown was introduced in \texttt{perlbench}; while a negative
+one in the \texttt{mcf} benchmark. We consider the negative overhead in the
+\texttt{mcf} benchmark to lie inside measurement error \todo{maybe calculate
+standard deviation or error rates to give proof}. We attribute the larger
+overhead in \texttt{perlbench} to be caused by the vast amounts of global
+variable accesses in the binary, as \texttt{perl} is an interpreted language
+(\todo{do we require proof of this?  can we count the number of adrp executed
+during the benchmark?}).
+
+
+\section{Memory sanitization performance}
+
+In this section we compare the overhead introduced by \sysname's memory
+sanitization instrumentation and the overhead introduced by adding memory
+sanitization during compilation (\texttt{-fsanitize=address}).  From
+\autoref{labellatabella} we can see that source-based ASAN has a 84.04\%
+overhead on average, but the overhead varies a lot between individual
+benchmarks, depending on the amount of memory accesses. For example,
+\texttt{perlbench}, running an interpreter, makes a high amount of memory loads
+and stores that need to be individually checked by the address sanitizer each
+time; in fact, the overhead is noticeably higher (173.84\%). The same holds
+true for the \sysname's memory sanitization instrumentation (Binary ASAN in
+\autoref{labellatabella}): the overhead is larger in programs that frequently
+use memory. 
+
+On average, binary ASAN is slower than source ASAN (109.73\% instead of 84.04\%
+average overhead \todo{change basan average overhead, incorrect}). The reasons
+behind the slowdown are the following:
+\begin{itemize}
+	\item Number of instrumented locations: Without source code available,
+		\sysname cannot use certain types of analysis that the compilers use to 
+		determine the safety of certain memory accesses. For this reason, \sysname
+		instruments every single memory access, while source ASAN skips some of them.
+	\item Assembly generation optimizations: \sysname is a relatively simple tool, 
+		and instruments memory accesses with hand-written assembly snipptes. While
+		some optimizations were implemented (register savings, batching checks), they
+		do not even come close to the number and complexity of optimizations passes that
+		standard compilers use when generating machine code. 
+\end{itemize}
+Still, the slowdown with respect to source ASAN is very little compared to state of the art tools.
+In fact, without source code, the only way of adding memory sanitization to a binary is through
+dynamic instrumentation. We ran the benchmarks using a very famous dynamic instrumenter that implements
+memory sanitization (Valgrind's \texttt{memcheck} tool~\cite{valgrind}), and plotted the runtimes in
+\autoref{plot1} and \autoref{plot2}. The overhead introduced by dynamic instrumentation is around 10x the 
+overhead of binary ASAN, depending on the amount of memory accesses of the benchmark. 
+
+However, it needs to be said that our binary ASAN instrumentation has a few shortcomings. First of all,
+stack variables access is not instrumented. Secondly, global variable accesses are not instrumented. Both
+of those are caused by the fact that without source code, bounds determination is impossible for variables
+in non-heap memory regions. 
+
+\todo{Do we want to show how bad are trampolines? I could design a small experiment around that.}.
+
+
+\todo{Do we want to talk about register savings and of how much time do they gain?}
+
+
+\todo{Do we want to talk about cache misses? I already have scripts to measure them, I just need to 
+run all the benchmarks all over again}
+
+
+\begin{figure}[h]
+\includegraphics[width=15cm]{cloudlab.pdf}
+\centering
+	\caption{Benchmark runtime on the Atlas machine. \todo{fix label names} \todo{update plot for new gcc results} }
+\label{plot1}
+\end{figure}
+
+\begin{center}
+\begin{figure}[h]
+\includegraphics[width=\textwidth]{raspberry.pdf}
+\centering
+\caption{Benchmark runtime on the raspberry machine. \todo{fix label names} }
+\label{plot2}
+\end{figure}
+\end{center}
+
+\begin{table}
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+	\textbf{Name} \hspace{4em} &\textbf{Symbolization only} & \textbf{Source ASAN} & \textbf{Binary ASAN} & \textbf{Valgrind} \\
+\toprule
+
+	\texttt{cpugcc\_r   } & 0.95\% &145.80\% & x.xx\% & 1729.20\% \\
+	\texttt{perlbench\_r} & 2.91\% &173.84\% &260.10\% &3377.03\% \\
+	\texttt{imagick\_r}   & 0.30\% & 71.53\% & 71.17\% &1578.53\% \\
+	\texttt{nab\_r      } & 0.34\% & 28.57\% & 27.21\% &1110.82\% \\
+	\texttt{xz\_r   }     & 0.44\% &105.79\% &144.76\% &1036.57\% \\
+	\texttt{mcf\_r      } &-0.07\% & 40.77\% & 83.74\% & 390.94\% \\
+	\texttt{lbm\_r      } & 0.59\% & 49.58\% & 97.31\% & 715.46\% \\
+	\midrule
+	\textbf{Average} & \textbf{0.76\%} & \textbf{84.04\%} & \textbf{109.73\%} & \textbf{1429.94\%} \\
+\bottomrule
+\end{tabular}
+\caption{Overhead of \sysname without instrumentation and of \sysname with
+BASAN instrumentation on SPEC CPU2017 on the Atlas machine compared to the original benchmark
+and the original benchmarks compiled with source based ASAN.
+\todo{update basan average, which is slightly wrong} } 
+\label{labellatabella}
+\end{table}
+
+
+\begin{table}
+\centering
+	%\sisetup{math-rm = \mathtt}
+%\sisetup{detect-display-math=true}
+%\sisetup{detect-all=true}
+\sisetup{detect-weight=true}
+\sisetup{mode=text}
+\robustify\bfseries
+	\begin{tabular}{lS[table-format=1.2]S[table-format=3.2]}
+\toprule
+\textbf{Name} \hspace{4em} & {\textbf{Literal pools}} & {\parbox[c]{5cm}{\centering\textbf{Symbolized}\\ \textbf{pointer building}}} \\
+
+\toprule
+
+	\texttt{perlbench\_r} & 2.91\si{\percent} & 173.84\si{\percent} \\
+	\texttt{imagick\_r}   & 0.30\si{\percent} & 71.53\si{\percent} \\
+	\texttt{nab\_r      } & 0.34\si{\percent} & 28.57\si{\percent} \\
+	\texttt{xz\_r   }     & 0.44\si{\percent} & 105.79\si{\percent} \\
+	\texttt{mcf\_r      } & -0.07\si{\percent} & 40.77\si{\percent} \\
+	\texttt{lbm\_r      } & 0.59\si{\percent} & 49.58\si{\percent} \\
+	\midrule
+	%\textbf{Average} & \bm{0.76\%} & \bm{84.04\%} \\
+	\textbf{Average} & \bfseries 0.76\% & \bfseries 84.04\% \\
+\bottomrule
+\end{tabular}
+\caption{Overhead of \sysname without instrumentation and of \sysname with
+BASAN instrumentation on SPEC CPU2017 on the Atlas machine compared to the original benchmark
+and the original benchmarks compiled with source based ASAN.
+\todo{update basan average, which is slightly wrong} } 
+\label{labellatabella}
+\end{table}
+
+
+
+
+
+%\hrule
+%A. ScalabilityTable II shows a list of all successfully rewritten binariesand
+%their sizes as part of the evaluation, demonstrating thescalability
+%ofRetroWrite(RQ1). Prior work on reassem-bleable assembly uses coreutils to
+%evaluate scalability to realworld software, which have a median size of 394KB
+%and a
+
+%maximum size of 1.3MB. As Table II shows, we evaluate on12 binaries that are
+%larger than a megabyte, with a mediansize of 1.09MB (2.7xlarger) and maximum
+%size of 12MB (9.2xlarger). Consequently, we are confident
+%thatRetroWritecanrewrite arbitrary C binaries.B. Memory Checker — PerformanceWe
+%evaluate the performance ofASan-retrowriteon the SPEC CPU2006 C benchmarks.
+%Since the orig-inal benchmarks exhibit some memory safety violations,we applied
+%patches provided in Google’s Address Sani-tizer repository [53]. The Google
+%patch blacklists instru-mentation of certain functions in perlbench,
+%e.g.,char*movenoasan, as they cause violations. Our initial eval-uation
+%ofASan-retrowritereported a use-after-free inthe above function, after which we
+%manually removed ASanchecks from the same function for evaluation. All code
+%wascompiled with options:-O2 -std=gnu89andgcc-5.4.0and flags to produce
+%position-independent executables. Val-grind was configured to track the same
+%set of features as ASan.Our evaluation indicates that on an average we are
+%about300% better than Valgrind, and 65% slower than ASan.We present a detailed
+%view of our results in Figure 3.The main reason for ASan’s low-overhead when
+%comparedto other memory checkers is its highly optimized memorycheck
+%instrumentation. Therefore, any additional overhead isclearly visible in
+%long-running benchmarks. We identified thefollowing as causes for the overhead
+%ofASan-REtrowrite when compared to ASan
+
+
+%1)Instrumentation Locations.ASan-retrowritein-struments  more  locations  than
+%source  ASan.  Thecompiler-based instrumentation removes some checks ifit can
+%prove accesses are safe.2)Register Spills.As register allocation happens
+%lateduring code generation, the compiler considers boththe original code and
+%the instrumentation, therebygenerating better register allocation with fewer
+%spills.ASan-retrowriteis limited to a conservative reg-ister liveness analysis
+%and opportunistically uses deadregisters to reduce register spills, but cannot
+%change theregister allocation scheme as a whole.3)Optimized Checks Placement.To
+%reduce register pres-sure, or flag recomputations, source-based ASan is freeto
+%move the memory check instrumentation (accordingto language semantics).
+%However, our binary ASan can-not do this as hoisting checks is not always safe
+%andneeds more principled compiler-like analysis.4)Loop Hoisting.Checking
+%contiguous memory accessesin hot loops can be expensive. As a part of the
+%op-timization pipeline, a compiler may choose to hoistsuch checks out of the
+%loop and perform a singlecheck to reduce the overall overhead. Though
+%possible,implementing such loop-hoisting mechanisms are a lotharder, mainly due
+%to lack of abstractions such as loopsin the binary level.
+
+%\hrule
+
+%\section{Experiment overview}
+%\todo{Explain our setup, the hardware we used, what we were measuring.}
+
+%\todo{Talk a bit on also the difficulties caused by the nature of the 
+%benchmarks, namely very long times (up to 48 hours, and probably more now that 
+%I have CloudLab :D ), very high RAM usage, and so on.}
+
+%\todo{(OPTIONAL) Talk a bit on how those difficulties were approached, with the 
+%very strict collection of experiment metadata using Github CI and the telegram 
+%bot.}
+
+%\section{SPEC CPU}
+%\todo{Explain how much do I hate the SPEC CPU benchmark, who developed it, the 
+%crazy fact that it is the accepted state of the art method for benchmarking 
+%single-core performance, how counter-intuitive their directory structure, 
+%config files, and bash scripts are.  /s}
+
+%\section{Results}
+%\todo{Present  plots and tables, and a detailed explanation on each one.
+%Make sure to respect the style of Mathias' previous papers/theses, to avoid 
+%getting him unnecessarily angry}
+
+%\todo{Compare it to state-of-the-art dynamic instrumentation (QEMU).}
 
 
 %%%%%%%%%%%%%%%%%%%%%%
