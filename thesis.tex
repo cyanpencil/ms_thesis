@@ -172,6 +172,10 @@
 	detection and jump table instrumentation, based on 
 	the \sysname project.
 
+	Our proof of work implementation of a memory sanitizer instrumentation
+	pass has the same functionality of the source-based counterpart, and our
+	benchmarks show that it is \todo{xx\%} faster than Valgrind's \texttt{memcheck}.
+
 	%which implements the symbolization engine and the memory
 	%sanitization instrumentation. 
 
@@ -181,8 +185,8 @@
 	%but losing fine-grained control over the instrumented instructions) or use 
 	%approaches like trampolines which make the whole problem much easier but 
 	%also introduce a noticeable overhead.
-	\todo{add a fourth paragraph conclusion to this abstract, like "our proof of work 
-	implementation of retrowrite is xx\% faster than QEMU and etc..."}
+	%\todo{add a fourth paragraph conclusion to this abstract, like "our proof of work 
+	%implementation of retrowrite is xx\% faster than QEMU and etc..."}
 
 
 \end{abstract}
@@ -514,10 +518,6 @@ source of non trivial problems during the porting of \sysname.
 		(Capstone~\cite{capstone}) and the debugger (GDB)
 \end{itemize}
 
-%\todo{Get into detail on what are the key differences between x86 and ARM. Give 
-%some foreshadowing on the challenges that will be faced because of ARM quirks.}
-
-
 
 %%%%%%%%%%%%%%%%
 \chapter{Design}
@@ -555,9 +555,45 @@ avoid limiting any kind of instrumentation.
 instrumentation.  The symbolizer takes care of loading and analyzing a binary, 
 but its main job is substituting every reference in the target with assembly 
 labels, plus some minor tasks to keep the original functionality of the binary 
-intact. One or more instrumentation passes can be enabled to apply 
+intact. 
+Listing \ref{diffass}  shows the output of the symbolization process on a
+small example assembly snippet.
+
+One or more instrumentation passes can be enabled to apply 
 transformations to the resulting binary. For now, only a single pass is 
 implemented (BASan), but many more can be easily added.
+
+
+
+\begin{figure}[h]
+\begin{minipage}{.45\textwidth}
+
+\begin{lstlisting}
+0x400: adr  x0, 0xab0000
+0x404: cmp  x1, 20
+0x408: b.eq 4
+0x40c: ret
+0x410: ret
+\end{lstlisting}
+
+
+\end{minipage}\hfill
+\begin{minipage}{.45\textwidth}
+
+\begin{lstlisting}
+.LC400: adr  x0, .LCab0000
+.LC404: cmp  x1, 20
+.LC408: b.eq .LC410
+.LC40c: ret
+.LC410: ret
+\end{lstlisting}
+
+\end{minipage}
+\captionof{lstlisting}{Assembly in the original binary (left), and after symbolization (right)}
+\label{diffass}
+\end{figure}
+
+
 
 \section{Key Issues}
 The outstanding challenges of statically analyzing and instrumenting ARM 
@@ -567,8 +603,6 @@ binaries can be summarized as follows:
 	\item Detecting and fixing pointer constructions.
 	\item Detecting and symbolizing jump tables.
 	\item Supporting extensive instrumentation by enlarging jump tables.  
-		\todo{Not 100\% sure about this one, maybe put it together with the 
-		second item?}
 \end{itemize}
 
 In the following pages we will get into detail for each one of those issues, 
@@ -668,9 +702,7 @@ to understand which of those is the correct one.
 This final solution scales really well, as proved by the fact that we rewrote 
 very large binaries and successfully ran them through long benchmarks. For more 
 details on how the exclusion algorithm works, see the next chapter, 
-Implementation.  \todo{maybe go into detail and explain the section alignment 
-trick, and what is the reason for why it works, that is retrowrite will never 
-instrument data sections}
+Implementation.  
 
 
 \subsection{Jump table target recovery}
@@ -691,7 +723,7 @@ case is loaded into register \texttt{w1}, and then later added to the base case
 \texttt{x0} on line 5. 
 
 
-\begin{lstlisting}[label={lst:jmptbl},caption={Example of a jump table in \texttt{aarch64}}]
+\begin{lstlisting}[float,floatplacement=H,label={lst:jmptbl},caption={Example of a jump table in \texttt{aarch64}}]
 adrp x0, <jump_table_page_address>
 add x0, x0, <jump_table_page_offset>
 ldrb w1, [x0, w1, uxtw]
@@ -790,8 +822,6 @@ implement, it would help us keep the original memory layout of the binary,
 which is a very desirable property in binary rewriting. 
 
 \subsection{Control Flow broken by instrumentation}
-\todo{not sure where to put this subsection. Maybe delete it, it's a really 
-simple issue, maybe not worth discussing}
 When adding substantial amount of instrumentation to a binary, some pc-relative 
 branches can break, like the instruction \texttt{cbz}, which cannot jump to 
 addresses farther than 1MB. 
@@ -830,49 +860,19 @@ original functionality of the binary.
 
 %This section is usually 3-5 pages.
 
-\mat{Add a lead in that describes the key parts of the implementation.}
+In this chapter we cover the implementation of the rewriter, and of bASAN, the memory
+sanitization instrumentation pass. We will also share details on the optimizations
+we implemented to minimize instrumentation overhead.
 
 \section{Symbolizer}
 
-Symbolization is the process of substituting pointers with assembly symbols that can be later understood by a general-purpose assembler. As mentioned before, this requires detection of every single pointer and control flow mechanism used in the binary. 
 
-\mat{This seems to be repetitive. Information what a symbolizer is should be
-either in the background or related work.}
-
-\mat{What is the key problem here? That should be the focus and how you address
-them. Try to list the key issues and then in the subsection describe how you
-solved them}
-
-Listing \ref{lst:diffass}  shows the output of the symbolization process on a small example assembly snippet.
-
-
-\begin{figure}[h]
-\label{lst:diffass}
-\begin{minipage}{.45\textwidth}
-
-\begin{lstlisting}
-0x400: adr  x0, 0xab0000
-0x404: cmp  x1, 20
-0x408: b.eq 4
-0x40c: ret
-0x410: ret
-\end{lstlisting}
-
-
-\end{minipage}\hfill
-\begin{minipage}{.45\textwidth}
-
-\begin{lstlisting}
-.LC400: adr  x0, .LCab0000
-.LC404: cmp  x1, 20
-.LC408: b.eq .LC410
-.LC40c: ret
-.LC410: ret
-\end{lstlisting}
-
-\end{minipage}
-\captionof{lstlisting}{Assembly in the original binary (left), and after symbolization (right)}
-\end{figure}
+Symbolization requires detection of every single pointer and control flow
+mechanism in the binary. In \texttt{aarch64}, this may prove to be harder than
+it looks, as in fact pointer construction patterns are difficult to recover
+and jump tables are not as friendly as they are in x86. 
+In the following subsections we will go over each problem and explain our
+approach to tackle them. 
 
 
 
@@ -882,21 +882,22 @@ Listing \ref{lst:diffass}  shows the output of the symbolization process on a sm
 
 Standard compilers (clang, gcc) that target \texttt{aarch64} use a common 
 pattern for building pointers: an \texttt{adrp} instruction, loading the page 
-of the destination address, and either an \texttt{add} or similar arithmetic 
+of the destination address, and then either an \texttt{add} or similar arithmetic 
 instruction to fix the offset inside the page, or a memory operation like 
 \texttt{ldr} or \texttt{str} that include the offset inside the page 
 (e.g.\texttt{ldr x0, [x1, 256]}).
 
-Initially, we implemented a pattern matching algorithm, 
-\mat{Runaway sentence?}
-
-Our initial approach was based on pattern matching. We first built a list of 
+We implemented two different approaches and combined them together to 
+successfully detect recover pointers in \texttt{aarch64} binaries.
+The first one is based on pattern matching. We first build a list of 
 possible pointer building locations, which meant all \texttt{adrp} 
 instructions. Next, we tried to find all \texttt{add}, \texttt{ldr}, or 
 \texttt{str} instructions (or their variants) that used the register that was 
-partially built with the \texttt{adrp}.  This approach, while working with the 
-large majority of pointer construction, was not enough because of the following 
+partially built with the \texttt{adrp}, and tried to recover the original
+pointer by emulating the arithmetics involved in those instructions.
+This approach alone was not enough because of the following 
 difficulties:
+
 \begin{itemize}
 	\item Multiple pointers built with the same \texttt{adrp}: As can be seen 
 		in \autoref{pointers}, sometimes the same \texttt{adrp} page loading 
@@ -910,8 +911,6 @@ difficulties:
 		later restored and used for pointer building. An example is present in 
 		\autoref{pointers3}
 \end{itemize}
-
-\mat{Good summary of issues}
 
 \begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \texttt{adrp} instruction}]
 adrp x0, 0xab0000
@@ -934,46 +933,52 @@ ldr  x3, [sp, 16!]
 add  x3, x3, 512   // pointer 0xab200
 \end{lstlisting}
 
-Adjusting our pattern matching algorithm to account for all those difficulties
-was increasingly difficult. We implemented a light data flow recovery algorithm
+
+We implemented a light data flow recovery algorithm
 that statically analyzed the control flow and the stack usage of a given
 function, following around the register used for the \texttt{adrp} and checking
-for its usage.  The implementation was difficult, error prone and full of edge
-cases, and we started to have some doubts on the soundness of our pattern
-matching solution. 
-\mat{Why was it difficult? You say it's difficult but don't share the details.
-Without argument why the adjective is not useful.}
+for its usage, to address all the difficulties stated above. However, it is
+particularly hard to support every single edge case, and missing a single
+pointer symbolizatoin is fatal and will cause a crash when the pointer is 
+dereferenced (which sometimes happens a while after the pointer is built, 
+and can be very time consuming to detect and debug). 
+While this pattern matching approach alone worked with the vast majority of
+pointer construction, it was insufficient to completely symbolize all pointers
+and failed on large binaries. 
 
 Our second approach took advantage of the fact that \sysname does not 
-instrument data sections, and the vast majority of global variables point to 
-those. Instead of trying to parse the pointer building patterns, we try to 
-guess which section of the original binary an \texttt{adrp} could be pointing 
-to. Since the \texttt{adrp} loads a base page, and then a page offset is added 
-\todo{or subtracted too?}, the sections that can be addressed by a single 
-pointer constructions are those that overlap the \texttt{adrp} address $\pm$ 1 
-KB.\@ Since all sections except \texttt{.text} are not instrumented, if we are 
-able to narrow down the possible target of a pointer construction to a single 
-section, we can symbolize the pointer by just adjusting the starting 
+instrument data sections, and the vast majority of global variables point to
+those. Instead of trying to parse the pointer building patterns, we try to
+guess which section of the original binary an \texttt{adrp} could be pointing
+to. Since the \texttt{adrp} loads a base page, and a page offset is added, the
+sections that can be addressed by a single pointer constructions are those that
+overlap the \texttt{adrp} address $\pm$ 1 KB.\@ Since all sections except
+\texttt{.text} are not instrumented, if we are able to narrow down the possible
+target of a pointer construction to a single section, we can symbolize the
+pointer by just adjusting the starting 
 \texttt{adrp} to correctly address the same symbolized section as in the 
 original binary, since offsets used by \texttt{add} or \texttt{ldr} will stay 
 the same.
-For example, if we encounter an instruction \texttt{adrp x0, 0xab000} and the
+For example, if we encounter the instruction \texttt{adrp x0, 0xab000} and the
 only section close enough is the \texttt{.bss} that starts at address
 \texttt{0xab256}, we can symbolize every pointer construction on \texttt{x0} by
 changing the above \texttt{adrp} to \texttt{ldr x0, =(.bss - 256)}.
 
-\mat{Such a 'first we did x then we did y' is OK for a report. For a paper you
-would highlight your latest and final approach and mention only why other
-approaches do not work.}
+%\mat{Such a 'first we did x then we did y' is OK for a report. For a paper you
+%would highlight your latest and final approach and mention only why other
+%approaches do not work.}
 
-This new approach was easier to implement and also more stable, as it did not
+
+This second approach is more stable, as it does not
 incur in any of the problems stated above. However, it was not always
 applicable, as especially in smaller binaries multiple sections could be in the
 $\pm$ 1 KB range from the \texttt{adrp} destination address; in that case, we
-used some simple data flow analysis to exclude as many as possible. If there 
-still is more than one possible section, then we fall back to the old pattern 
-matching solution. In our experience, we fall back to pattern matching less 
-than 1\% of the time.
+used some simple data flow analysis to exclude as many sections as possible.
+We found out that in around 99\% of cases we are able to use this \texttt{adrp}-adjusting
+approach without needing to do any heuristics at all. In the case we are not able
+to determine which single section the \texttt{adrp} is pointing to, we fall back
+to the first pattern matching based approach. 
+
 
 \subsection{Symbolization of pointers}
 
@@ -987,16 +992,15 @@ A literal pools is a special region of memory in a binary that stores absolute
 addresses. It is widely used in \texttt{ARM} to overcome the challenge of not
 being able to store a pointer in a single instruction. 
 
-The \texttt{ARM} assembly specification~\cite{literalpoolsarm} explains
-\todo{use a better term here} that the assembler will store a pointer in a
-literal pool when using the following construct: \texttt{ldr x0, =<pointer>}.
-The \texttt{=<pointer>} part will be assembled with a pc-relative load to the
-nearest literal pool that contains the full pointer address.
-The location of the literal pool must be manually specified in assembly
-through the \texttt{.ltorg} directive. Usually, literal pools are stored
-between functions in the \texttt{.text} sections. Since the pc-relative load can only 
-target addresses in the $\pm$ 1 MB range, literal pools must be stored 
-inside functions if they are larger than 2 MB. 
+The \texttt{ARM} assembly specification~\cite{literalpoolsarm} states that the
+assembler will store a pointer in a literal pool when using the following
+construct: \texttt{ldr x0, =<pointer>}.  The \texttt{=<pointer>} part will be
+assembled with a pc-relative load to the nearest literal pool that contains the
+full pointer address.  The location of the literal pool must be manually
+specified in assembly through the \texttt{.ltorg} directive. Usually, literal
+pools are stored between functions in the \texttt{.text} sections. Since the
+pc-relative load can only target addresses in the $\pm$ 1 MB range, literal
+pools must be stored inside functions if they are larger than 2 MB. 
 
 In our first implementation we used literal pools to symbolize pointers, but we 
 detected noticeable overhead introduced even without instrumentation added. The runtime
@@ -1032,39 +1036,247 @@ the offset inside a page).
 .LC400: adrp  x0, .LCab100          // base page 
 .LC404: add x0, x0, :lo12:.LCab100  // page offset
 \end{lstlisting}
-
 \end{minipage}
-	\captionof{lstlisting}{Example pointer construction in the original binary (above) and symbolized pointer construction (below)}
+	\captionof{lstlisting}{Example pointer construction in the original binary
+	(above) and symbolized pointer construction (below)}
 \end{figure}
 
 
 
 \section{Jump Tables}
 
-Switch statements in \texttt{ARM} binaries are stored as a table of offsets, instead of absolute addresses like in \texttt{x86}. This makes symbolizing them particularly tricky. 
-\mat{Either be a bit more verbose/detailed about the problem or reference the
-section where you share the details.}
+Switch statements in \texttt{ARM} binaries are stored as a table of offsets,
+instead of absolute addresses like in \texttt{x86}. This makes symbolizing them
+particularly tricky. First of all, detecting them is not easy. As can be seen
+in Listing \ref{omgjmptbl}, they do not have a particular pattern in memory. In
+this section we will go over what was our approach to finding them and how did
+we symbolize them without breaking their functionality.
 
-\subsection{Detection of jump tables}.
+
+
+\begin{figure}[h]
+\begin{minipage}{.50\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+0x400: adrp x0, 0x8000
+0x404: add x0, x0, 3
+0x408: ldrb w1, [x0, w1, uxtw]
+0x40c: adr x0, 0x418
+0x410: add x0, x0, w1, sxtb 2
+0x414: br x0
+0x418: movz x0, 1 // case 0,1,2
+0x41c: ret
+0x420: movz x0, 10 // case 3
+0x424: ret
+0x428: movz x0, 100 // case 4
+0x42c: ret
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}{.45\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+0x8003: byte 0x0   // case 0
+0x8004: byte 0x0   // case 1
+0x8005: byte 0x0   // case 2
+0x8006: byte 0x8  // case 3
+0x8007: byte 0x10  // case 4
+\end{lstlisting}
+\end{minipage}
+\captionof{lstlisting}{Left: code for a performing a switch. Register w1
+	holds the case number that is going to be executed. The offset is loaded at
+	\texttt{0x408}, which is added to the base case address (loaded at
+	\texttt{0x40c}) and then jumped into (\texttt{0x414}). \\ Right:
+	corresponding jump table in memory, with 5 cases each occupying a single
+	byte in memory. Cases can be repeated, and are impossible to distinguish
+	from other data in memory.}
+\label{omgjmptbl}
+\end{figure}
+
+
+
+
+%\mat{Either be a bit more verbose/detailed about the problem or reference the
+%section where you share the details.}
+
+\subsection{Detection of jump tables}
 Unlike \texttt{x86}, in \texttt{ARM} we cannot rely on heuristic such as looking for 
 lists of valid instruction pointers in the \texttt{.rodata} section. 
+However, compilers use very common patterns when using a jump table, as can be seen
+in \autoref{jmptbl} and \autoref{omgjmptbl}. 
+Our algorithm to detect a jump table pattern works in the following way:
 
-\mat{TODO... }
-\subsubsection{How were they detected}
-\subsubsection{Jump Table symbolization}
-\subsubsection{Jump Table enlargment}
-\subsubsection{Jump Table cases nop padding}
-%\todo{Explain the following:}
-%\begin{itemize}
-	%\item List all ideas we had
-	%\item Explain why we chose to implement the ungodly hack of expanding them 
-	%\item also, nop padding between cases
-%\end{itemize}
+\begin{itemize}
+	\item Recover all control flow from every function, using standard CFG recovery techniques.
+	\item Look for every location of an indirect jump, denoted by the \texttt{br} instruction. 
+	\item Use backwards-slicing to find every possible path that could lead to
+		that instruction, with a maximum path length of 50 instructions
+	\item Reverse-emulate every path, and store every possible (symbolized)
+		value that the register of the indirect call can have.
+	\item If the value that the register can have is the same for every path,
+		and corresponds to a jump table symbolic expression, then the
+		\texttt{br} instruction is part of a jump table construct.
+\end{itemize}
+
+To reverse-emulate every path that leads to the indirect call, we implemented a
+very limited \texttt{aarch64} symbolic instruction emulator. It supports around
+20 ARM instructions (all those that are common in jump table constructs, plus
+arithmetic instructions and a few memory-related ones).  A very simple example of the
+output of this emulator can be found in \autoref{emulator} (jump table constructs are 
+often more nuanced and interleaved with other instructions).
+
+After we get the symbolic value of the indirect jump register, we compare it to
+the standard jump table expression, which is the following:
+
+\texttt{base\_case\_addr + (*(jump\_table\_base\_addr + (register\_case\_number * ?)) \textless\;\textless\  ?)} 
+
+The symbol \texttt{?} is a wildcard for any (positive) integer value.
+\texttt{base\_case\_addr} is the address of case 0 in the jump table.
+\texttt{jump\_table\_base\_addr} is instead the address in memory of the jump
+table offsets. Finally, \texttt{register\_case\_number} is a register with as
+value the number of the case that is going to be executed. 
+
+
+\begin{figure}[h]
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+0x400: adrp x0, 0x8000
+0x404: add x0, x0, 3
+0x408: ldrb w1, [x0, w1, uxtw]
+0x40c: adr x0, 0x418
+0x410: add x0, x0, w1, sxtb 2
+0x414: br x0
+\end{lstlisting}
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+Analyzing 0x414: br x0
+x0 = x0
+x0 = x0 + (w1 << 2)
+x0 = 0x418 + (w1 << 2)
+x0 = 0x418 + (*(x0 + w1*1) << 2)
+x0 = 0x418 + (*(0x8003 + w1*1) << 2)
+Result:
+Base case: 0x418
+Jump table addr: 0x8003
+Case number reg: w1
+Shift: 2
+\end{lstlisting}
+\captionof{lstlisting}{Above: example of a jump table pattern. Below: output of
+our symbolic emulator. }
+\label{emulator}
+\end{figure}
+
+
+\todo{Here I don't talk about detection of the number of cases of a jump table,
+because I believe there is not much more to explain other than the part in the
+design section. Is this OK?}
+
+
+\subsection{Jump Table symbolization}
+
+The symbolization of a jump table in memory is done using the assembler's 
+support for simple arithmetic on assembly labels. Since on ARM a jump table
+is no more than a sequence of offsets from a base instruction, we symbolize
+that with differences between assembly label. An example of this can be seen
+in \autoref{omgjmptbl}.
+
+Since the offsets in the symbolized version are calculated with assembly labels,
+any amount of code can be added between cases, and the assembler will make sure
+that the jump table will work correctly. This is one of the cases where the benefits
+of using symbolization as a rewriting techinique really shines, as it gives us the 
+freedom of inserting arbitrary instrumentaition (even by hand) without caring anymore 
+of correcting references.
+
+However, there is a catch: adding \emph{too much} instrumentation could
+overflow the value used to store the offset from the base case. In the example
+in \autoref{omgjmptbl}, if there are more than 256 instructions between a case
+and the base case, the offset will overflow as it is stored in a single byte.
+In the next subsection we will cover how we actually support adding arbitrary
+amount of instrumentation. 
+
+\begin{figure}[h]
+\begin{minipage}{.45\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+0x8003: byte 0x0   // case 0
+0x8004: byte 0x0   // case 1
+0x8005: byte 0x0   // case 2
+0x8006: byte 0x8   // case 3
+0x8007: byte 0x10  // case 4
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+0x8003: byte (.LC418 - .LC418) / 4
+0x8004: byte (.LC418 - .LC418) / 4
+0x8005: byte (.LC418 - .LC418) / 4
+0x8006: byte (.LC420 - .LC418) / 4
+0x8007: byte (.LC428 - .LC418) / 4
+\end{lstlisting}
+\end{minipage} 
+\captionof{lstlisting}{Left: jump table as stored in memory as
+found in the original binary. Right: symbolized jump table in the output of
+\sysname.}
+\label{omgjmptbl}
+\end{figure}
+
+
+\subsection{Jump Table enlargment}
+
+When too much instrumentation between jump table cases is added, the value used
+to store the offset from the base case can overflow. To address this, we
+implemented support for using a larger divisor when storing assembly label
+differences.  As an example, instead of storing \texttt{(LC418 - .LC410) / 4}
+like in \autoref{omgjmptbl}, we can store \texttt{(.LC418 - .LC410) / 8} to fit
+up to 512 instructions between \texttt{.LC418} and \texttt{.LC410}. The same reasoning
+can be reapplied with the other powers of two. 
+
+However, using a divisor higher than 4 means losing precision in the possible
+addresses of the cases we want to represent. Since 4 bytes is the size of each
+instruction, dividing by 4 means that every instruction can be targeted;
+dividing by 8 means that only one every two instructions can be targeted. To
+avoid losing precision over which instruction can be targeted or not, we insert
+\texttt{nop} padding before each case of the jump table in the output assembly
+in order to make every case targetable by an offset, with the amount of nops
+depending on how high is the divisor (e.g., dividing by 8 means that each case
+must by 8-byte aligned, so using up to 1 nop before each case; dividing by 16
+means using up to 3 nops, and so on). Since the number of nops inserted depends on 
+alignment, we leave this task to the assembler using the \texttt{.align} directives.
+
+After changing the divisor, we also need to change the indirect jump calculations in the
+binary's code to match the new shift value. Usually, the offset to be added is multiplied by
+4 using an instruction like \texttt{add x0, x0, w1, sxtb 2} (which shifts left by 2), as
+can be seen in \autoref{emulator}. We change the shift value according to how high we set
+the dividend in the symbolized jump table (the \texttt{add} instruction support shifting left
+up to 4, but we insert a standard \texttt{lsl} instruction before if it's higher than 4). 
+
+An example of this can be found in Listing \ref{enlarged}.
+
+\begin{figure}[h]
+\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+.LC400: adrp x0, .LC8003
+.LC404: add x0, x0, :lo12:.LC8003
+.LC408: ldrb w1, [x0, w1, uxtw]
+.LC40c: adr x0, .LC418
+.LC410: add x0, x0, w1, sxtb 4
+.LC414: br x0
+.align 4
+.LC418: movz x0, 1 // case 0,1,2
+.LC41c: ret
+.align 4
+.LC420: movz x0, 10 // case 3
+.LC424: ret
+.align 4
+.LC428: movz x0, 100 // case 4
+.LC42c: ret
+...
+...
+0x8003: byte (.LC418 - .LC418) / 16
+0x8004: byte (.LC418 - .LC418) / 16
+0x8005: byte (.LC418 - .LC418) / 16
+0x8006: byte (.LC420 - .LC418) / 16
+0x8007: byte (.LC428 - .LC418) / 16
+\end{lstlisting}
+\captionof{lstlisting}{Example of enlarged symbolized jump table. The shift value at \texttt{0x410} is increased from 2 to 4, and the divisor at \texttt{0x8003} is increased from 4 to 16. Before each case, an \texttt{.align 4} assembly directive is inserted, as each of them need to be aligned to 16 bytes.}
+\label{enlarged}
+\end{figure}
 
 
 \section{Instrumentation (BASan)}
-\todo{This section probably needs to be rewritten from scratch, it was in the 
-design chapter before}
 The ASan instrumentation was designed to be compatible with the 
 AddressSanitizer libraries provided by Google, \texttt{libasan}. We carefully 
 selected shadow memory offsets and sizes to match those included in 
@@ -1075,7 +1287,7 @@ instrumentation just before each access to check the relevant bytes of shadow
 memory and error out in case an overflow or other memory corruption was found.
 
 
-\begin{lstlisting}[language=C,label={lst:asan},caption={ASan checking algorithm 
+\begin{lstlisting}[float,floatplacement=H,language=C,label={lst:asan},caption={ASan checking algorithm 
 implemented in C}]
 byte shadow_value = *(MemToShadow(address));
 if (shadow_value) {
@@ -1144,6 +1356,7 @@ conditional branch for the error checking.
 \chapter{Evaluation}
 %%%%%%%%%%%%%%%%%%%%
 %In the evaluation you convince the reader that your design works as intended.
+%approach without needing to do any heuristics at all. In the case we are not able
 %Describe the evaluation setup, the designed experiments, and how the
 %experiments showcase the individual points you want to prove.
 
