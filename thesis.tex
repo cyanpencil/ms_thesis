@@ -53,7 +53,7 @@
   commentstyle=\color{dkgreen}, 
   stringstyle=\color{mauve},   
   escapeinside={\%*}{*)},     
-  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, ldr}
+  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, ldr, movz}
 }
 
 
@@ -656,7 +656,7 @@ separated in two different instructions makes the static analysis of a binary
 substantially harder. Furthermore, compiler optimizations frequently exacerbate 
 the problem, by reusing parts of some pointer values to build new ones, or 
 reordering instructions around in such a way that a pointer can be built on two 
-instructions which are kylobytes away from each other. In some extreme cases, 
+instructions which are kilobytes away from each other. In some extreme cases, 
 by enabling the \texttt{-O3} optimizations, we found instances of pointers 
 built on two instructions that were on different functions, due to the compiler 
 optimizing a macro in the C source code. 
@@ -872,7 +872,7 @@ mechanism in the binary. In \texttt{aarch64}, this may prove to be harder than
 it looks, as in fact pointer construction patterns are difficult to recover
 and jump tables are not as friendly as they are in x86. 
 In the following subsections we will go over each problem and explain our
-approach to tackle them. 
+approach to tackle it. 
 
 
 
@@ -885,13 +885,13 @@ pattern for building pointers: an \texttt{adrp} instruction, loading the page
 of the destination address, and then either an \texttt{add} or similar arithmetic 
 instruction to fix the offset inside the page, or a memory operation like 
 \texttt{ldr} or \texttt{str} that include the offset inside the page 
-(e.g.\texttt{ldr x0, [x1, 256]}).
+(e.g., \texttt{ldr x0, [x1, 256]}).
 
 We implemented two different approaches and combined them together to 
-successfully detect recover pointers in \texttt{aarch64} binaries.
+successfully recover pointers in \texttt{aarch64} binaries.
 The first one is based on pattern matching. We first build a list of 
-possible pointer building locations, which meant all \texttt{adrp} 
-instructions. Next, we tried to find all \texttt{add}, \texttt{ldr}, or 
+possible pointer building locations, enumerating all instances of the \texttt{adrp} 
+instruction. Next, we tried to find all \texttt{add}, \texttt{ldr}, or 
 \texttt{str} instructions (or their variants) that used the register that was 
 partially built with the \texttt{adrp}, and tried to recover the original
 pointer by emulating the arithmetics involved in those instructions.
@@ -939,7 +939,7 @@ that statically analyzed the control flow and the stack usage of a given
 function, following around the register used for the \texttt{adrp} and checking
 for its usage, to address all the difficulties stated above. However, it is
 particularly hard to support every single edge case, and missing a single
-pointer symbolizatoin is fatal and will cause a crash when the pointer is 
+pointer symbolization is fatal and will cause a crash when the pointer is 
 dereferenced (which sometimes happens a while after the pointer is built, 
 and can be very time consuming to detect and debug). 
 While this pattern matching approach alone worked with the vast majority of
@@ -1063,9 +1063,9 @@ we symbolize them without breaking their functionality.
 0x40c: adr x0, 0x418
 0x410: add x0, x0, w1, sxtb 2
 0x414: br x0
-0x418: movz x0, 1 // case 0,1,2
+0x418: movz x0, 1   // case 0,1,2
 0x41c: ret
-0x420: movz x0, 10 // case 3
+0x420: movz x0, 10  // case 3
 0x424: ret
 0x428: movz x0, 100 // case 4
 0x42c: ret
@@ -1076,7 +1076,7 @@ we symbolize them without breaking their functionality.
 0x8003: byte 0x0   // case 0
 0x8004: byte 0x0   // case 1
 0x8005: byte 0x0   // case 2
-0x8006: byte 0x8  // case 3
+0x8006: byte 0x8   // case 3
 0x8007: byte 0x10  // case 4
 \end{lstlisting}
 \end{minipage}
@@ -1111,8 +1111,8 @@ Our algorithm to detect a jump table pattern works in the following way:
 	\item Reverse-emulate every path, and store every possible (symbolized)
 		value that the register of the indirect call can have.
 	\item If the value that the register can have is the same for every path,
-		and corresponds to a jump table symbolic expression, then the
-		\texttt{br} instruction is part of a jump table construct.
+		and corresponds to a jump table symbolic expression, then mark the
+		\texttt{br} instruction as part of a jump table construct.
 \end{itemize}
 
 To reverse-emulate every path that leads to the indirect call, we implemented a
@@ -1125,7 +1125,7 @@ often more nuanced and interleaved with other instructions).
 After we get the symbolic value of the indirect jump register, we compare it to
 the standard jump table expression, which is the following:
 
-\texttt{base\_case\_addr + (*(jump\_table\_base\_addr + (register\_case\_number * ?)) \textless\;\textless\  ?)} 
+\texttt{base\_case\_addr + (*(jump\_table\_base\_addr + (register\_case\_number * ?)) \textless\.\textless\  ?)} 
 
 The symbol \texttt{?} is a wildcard for any (positive) integer value.
 \texttt{base\_case\_addr} is the address of case 0 in the jump table.
@@ -1178,9 +1178,9 @@ in \autoref{omgjmptbl}.
 Since the offsets in the symbolized version are calculated with assembly labels,
 any amount of code can be added between cases, and the assembler will make sure
 that the jump table will work correctly. This is one of the cases where the benefits
-of using symbolization as a rewriting techinique really shines, as it gives us the 
-freedom of inserting arbitrary instrumentaition (even by hand) without caring anymore 
-of correcting references.
+of using symbolization as a rewriting technique really shines, as it gives us the 
+freedom of inserting arbitrary instrumentation (even by hand) without having to worry
+about correcting references.
 
 However, there is a catch: adding \emph{too much} instrumentation could
 overflow the value used to store the offset from the base case. In the example
@@ -1215,7 +1215,7 @@ found in the original binary. Right: symbolized jump table in the output of
 \end{figure}
 
 
-\subsection{Jump Table enlargment}
+\subsection{Jump Table enlargement}
 
 When too much instrumentation between jump table cases is added, the value used
 to store the offset from the base case can overflow. To address this, we
@@ -1223,7 +1223,7 @@ implemented support for using a larger divisor when storing assembly label
 differences.  As an example, instead of storing \texttt{(LC418 - .LC410) / 4}
 like in \autoref{omgjmptbl}, we can store \texttt{(.LC418 - .LC410) / 8} to fit
 up to 512 instructions between \texttt{.LC418} and \texttt{.LC410}. The same reasoning
-can be reapplied with the other powers of two. 
+can be reapplied with higher powers of two. 
 
 However, using a divisor higher than 4 means losing precision in the possible
 addresses of the cases we want to represent. Since 4 bytes is the size of each
@@ -1380,41 +1380,45 @@ benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
 benchmarks can be seen in \autoref{tabularasa}.  All of the benchmarks were run on
 the Atlas machine, while some of the benchmarks were not run on the raspberry because
 4GB of RAM were not enough to avoid using swap memory, compromising the results
-of the experiments. The Atlas machine was generally hosted by the CloudLab
+of the experiments. The Atlas machine was generously hosted by the CloudLab
 pojerct~\cite{cloudlab} in their Utah data center. 
 
-The benchmarks were compiled with the gcc compiler version 7.5.0 on a
-freshly installed Ubuntu 18.04 operating system. The following command line
-flags were used to compile the baseline benchmark binaries: \texttt{-O3
--fno-tree-loop-vectorize -fno-unsafe-math-optimizations -fgnu89-inline -fno-strict-aliasing}, in addition to the flags to produce position independent executables. 
-.  The original authors of the x86 version of \sysname demonstrated the
-scalability of their symbolization approach by rewriting binaries up to 12MB;\@
-we will go a step further and show that \sysname has no trouble at all
-rewriting a binary as big as gcc\_r (62MB).
+The benchmarks were compiled with the gcc compiler version 7.5.0 on a freshly
+installed Ubuntu 18.04 operating system. The following command line flags were
+used to compile the baseline benchmark binaries: \texttt{-O3
+-fno-tree-loop-vectorize -fno-unsafe-math-optimizations -fgnu89-inline
+-fno-strict-aliasing}, in addition to the flags to produce position independent
+executables. To demonstrate the scalability of our approach, we will rewrite
+binaries as large as the \texttt{gcc} benchmark (> 10MB).
 
-We evaluate the performance of the symbolization engine by running the benchmarks
-with the binaries of each benchmark rewritten by \sysname without adding any kind
-of instrumentation. We then evaluate the performance of our memory sanitization
-instrumentation pass by comparing it against its source based equivalent (\texttt{-fsanitize=address} in the compiler flags), and against the equivalent functionality implemented
-using a dynamic instrumentation approach, by using Valgrind with the memory sanitization
-option (\texttt{valgrind --tool=memcheck}).
+
+
+We evaluate the performance of the symbolization engine by running the
+benchmarks with the binaries of each benchmark rewritten by \sysname without
+adding any kind of instrumentation. We then evaluate the performance of our
+memory sanitization instrumentation pass by comparing it against its source
+based equivalent (\texttt{-fsanitize=address} in the compiler flags), and
+against the equivalent functionality implemented using a dynamic
+instrumentation approach, by using Valgrind with the memory sanitization option
+(\texttt{valgrind --tool=memcheck}).
+
+
 
 
 \begin{table}
 \centering
-\begin{tabular}{lr}
+\begin{tabular}{lrr}
 \toprule
-	\textbf{Name} & \textbf{Size}\\
+	\textbf{Name} & \textbf{Size} & \textbf{Stripped size} \\
 \toprule
-\texttt{cpugcc\_r   } & 63 MB\\
-\texttt{perlbench\_r} \hspace{2em} &   11 MB \\
-\texttt{imagick\_r  } & 2.4 MB\\
-\texttt{x264\_r } &  687 KB\\
-\texttt{ldecod\_r   } & 713 KB\\
-\texttt{nab\_r      } & 249 KB\\
-\texttt{xz\_r   } &  244 KB \\
-\texttt{mcf\_r      } & 45 KB\\
-\texttt{lbm\_r      } & 23 KB \\
+	\texttt{cpugcc\_r   }              & 63 MB  & 10 MB  \\
+	\texttt{perlbench\_r} \hspace{2em} & 11 MB  & 2.5 MB \\
+	\texttt{imagick\_r  }              & 2.4 MB & 2.2 MB \\
+	\texttt{x264\_r }                  & 687 KB & 645 KB \\
+	\texttt{nab\_r      }              & 249 KB & 229 KB \\
+	\texttt{xz\_r   }                  & 244 KB & 215 KB \\
+	\texttt{mcf\_r      }              & 45 KB  & 38 KB  \\
+	\texttt{lbm\_r      }              & 23 KB  & 18 KB  \\
 \bottomrule
 \end{tabular}
 \caption{Name and size of the SPEC CPU2017 benchmarks written in C.}
@@ -1429,7 +1433,7 @@ symbolization process is very small. Detailed results can be found in
 state of the art static rewriters~\cite{egalito}.  This kind of overhead is
 probably due to unoptimal realignment of sections and code, as we produce
 position independent assembly and we do not optimize for cache hits or anything
-else, leaving this kind of work entirely to the linker. Another important
+else, leaving this work entirely to the linker. Another important
 factor for the overhead is that each pointer building instruction \texttt{adrp}
 is symbolized with two instructions (an \texttt{adrp} followed by an
 \texttt{add}); so for each global variable access the binary makes the CPU will
@@ -1439,12 +1443,13 @@ for \texttt{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
 Interestingly, we managed to have such a low overhead only after the
 elimination of literal pools to symbolize pointer building. When using literal
 pools, the average overhead was 3.5\%, with the maximum value being at 10.7\%
-for \texttt{perlbench}. 
+for \texttt{perlbench} (see \autoref{slowpools} for more details) \todo{this is not true, as it was run on different machines. Re-run
+everything on CloudLab}. 
 
 A noticeable slowdown was introduced in \texttt{perlbench}; while a negative
 one in the \texttt{mcf} benchmark. We consider the negative overhead in the
 \texttt{mcf} benchmark to lie inside measurement error \todo{maybe calculate
-standard deviation or error rates to give proof}. We attribute the larger
+standard deviation or error rates to give proof?}. We attribute the larger
 overhead in \texttt{perlbench} to be caused by the vast amounts of global
 variable accesses in the binary, as \texttt{perl} is an interpreted language
 (\todo{do we require proof of this?  can we count the number of adrp executed
@@ -1475,7 +1480,7 @@ behind the slowdown are the following:
 		determine the safety of certain memory accesses. For this reason, \sysname
 		instruments every single memory access, while source ASAN skips some of them.
 	\item Assembly generation optimizations: \sysname is a relatively simple tool, 
-		and instruments memory accesses with hand-written assembly snipptes. While
+		and instruments memory accesses with hand-written assembly snippets. While
 		some optimizations were implemented (register savings, batching checks), they
 		do not even come close to the number and complexity of optimizations passes that
 		standard compilers use when generating machine code. 
@@ -1544,11 +1549,35 @@ and the original benchmarks compiled with source based ASAN.
 \end{table}
 
 
+%\begin{table}
+%\centering
+%\sisetup{detect-weight=true}
+%\sisetup{mode=text}
+%\robustify\bfseries
+	%\begin{tabular}{lS[table-format=1.2]S[table-format=3.2]}
+%\toprule
+%\textbf{Name} \hspace{4em} & {\textbf{Literal pools}} & {\parbox[c]{5cm}{\centering\textbf{Symbolized}\\ \textbf{pointer building}}} \\
+
+%\toprule
+
+	%\texttt{perlbench\_r} & 2.91\si{\percent} & 10.71\si{\percent} \\
+	%\texttt{imagick\_r}   & 0.30\si{\percent} & 1.07\si{\percent} \\
+	%\texttt{nab\_r      } & 0.34\si{\percent} & 0.00\si{\percent} \\
+	%\texttt{xz\_r   }     & 0.44\si{\percent} & 2.39\si{\percent} \\
+	%\texttt{mcf\_r      } & -0.07\si{\percent}& 2.42\si{\percent} \\
+	%\texttt{lbm\_r      } & 0.59\si{\percent} & 0.91\si{\percent} \\
+	%\midrule
+	%\textbf{Average} & \bfseries 0.76\% & \bfseries 3.5\% \\
+%\bottomrule
+%\end{tabular}
+%\caption{Overhead of \sysname without instrumentation comparing the recovery 
+%of pointers by using literal pools and by using symbolized pointer building.
+%\todo{The symbolized pointer building column needs to be redone from scratch} } 
+%\label{slowpools}
+%\end{table}
+
 \begin{table}
 \centering
-	%\sisetup{math-rm = \mathtt}
-%\sisetup{detect-display-math=true}
-%\sisetup{detect-all=true}
 \sisetup{detect-weight=true}
 \sisetup{mode=text}
 \robustify\bfseries
@@ -1558,24 +1587,21 @@ and the original benchmarks compiled with source based ASAN.
 
 \toprule
 
-	\texttt{perlbench\_r} & 2.91\si{\percent} & 173.84\si{\percent} \\
-	\texttt{imagick\_r}   & 0.30\si{\percent} & 71.53\si{\percent} \\
-	\texttt{nab\_r      } & 0.34\si{\percent} & 28.57\si{\percent} \\
-	\texttt{xz\_r   }     & 0.44\si{\percent} & 105.79\si{\percent} \\
-	\texttt{mcf\_r      } & -0.07\si{\percent} & 40.77\si{\percent} \\
-	\texttt{lbm\_r      } & 0.59\si{\percent} & 49.58\si{\percent} \\
+	\texttt{perlbench\_r} & 10.71\si{\percent} & 5.21 \si{\percent} \\
+	\texttt{imagick\_r}   & 1.07 \si{\percent} & 0.33 \si{\percent} \\
+	\texttt{nab\_r      } & 0.00 \si{\percent} & 0.00 \si{\percent} \\
+	\texttt{xz\_r   }     & 2.39 \si{\percent} & 2.39 \si{\percent} \\
+	\texttt{mcf\_r      } & 2.42 \si{\percent} & 1.20 \si{\percent} \\
+	\texttt{lbm\_r      } & 0.91 \si{\percent} & 1.03 \si{\percent} \\
 	\midrule
-	%\textbf{Average} & \bm{0.76\%} & \bm{84.04\%} \\
-	\textbf{Average} & \bfseries 0.76\% & \bfseries 84.04\% \\
+	\textbf{Average} & \bfseries 3.51\% & \bfseries 1.94\% \\
 \bottomrule
 \end{tabular}
-\caption{Overhead of \sysname without instrumentation and of \sysname with
-BASAN instrumentation on SPEC CPU2017 on the Atlas machine compared to the original benchmark
-and the original benchmarks compiled with source based ASAN.
-\todo{update basan average, which is slightly wrong} } 
-\label{labellatabella}
+\caption{Overhead of \sysname on the Raspberry without instrumentation comparing the recovery 
+of pointers by using literal pools and by using symbolized pointer building.
+\todo{The symbolized pointer building column needs to be redone, possibly on the CloudLab machine} } 
+\label{slowpools}
 \end{table}
-
 
 
 
@@ -1681,6 +1707,9 @@ and the original benchmarks compiled with source based ASAN.
 
 \todo{This section now has only list of related work I would like to talk 
 about, will be expanded later}
+
+
+\todo{Complain about egalito}
 
 
 
