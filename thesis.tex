@@ -175,6 +175,7 @@
 	Our proof of work implementation of a memory sanitizer instrumentation
 	pass has the same functionality of the source-based counterpart, and our
 	benchmarks show that it is \todo{xx\%} faster than Valgrind's \texttt{memcheck}.
+\mat{Make XX a macro and use it throughout when you refer to that number.}
 
 	%which implements the symbolization engine and the memory
 	%sanitization instrumentation. 
@@ -550,6 +551,7 @@ avoid limiting any kind of instrumentation.
 \centering
 \caption{Overview of the structure of \sysname}
 \end{figure}
+\mat{Fix figure.}
 
 \sysname is divided into two main components: the symbolizer and the 
 instrumentation.  The symbolizer takes care of loading and analyzing a binary, 
@@ -964,9 +966,6 @@ only section close enough is the \texttt{.bss} that starts at address
 \texttt{0xab256}, we can symbolize every pointer construction on \texttt{x0} by
 changing the above \texttt{adrp} to \texttt{ldr x0, =(.bss - 256)}.
 
-%\mat{Such a 'first we did x then we did y' is OK for a report. For a paper you
-%would highlight your latest and final approach and mention only why other
-%approaches do not work.}
 
 
 This second approach is more stable, as it does not
@@ -1092,22 +1091,21 @@ we symbolize them without breaking their functionality.
 
 
 
-
-%\mat{Either be a bit more verbose/detailed about the problem or reference the
-%section where you share the details.}
-
 \subsection{Detection of jump tables}
-Unlike \texttt{x86}, in \texttt{ARM} we cannot rely on heuristic such as looking for 
-lists of valid instruction pointers in the \texttt{.rodata} section. 
-However, compilers use very common patterns when using a jump table, as can be seen
-in \autoref{jmptbl} and \autoref{omgjmptbl}. 
-Our algorithm to detect a jump table pattern works in the following way:
+Unlike \texttt{x86}, on \texttt{ARM} jump tables are not encoded as sets of code
+pointers in the \texttt{.rodata} section.
+Similar to \texttt{x86}, on \texttt{ARM} compilers use specific patterns to construct
+code pointers, for example through
+\autoref{jmptbl} and \autoref{omgjmptbl}. 
+Our algorithm to detect a jump table pattern works as follows:
 
 \begin{itemize}
-	\item Recover all control flow from every function, using standard CFG recovery techniques.
-	\item Look for every location of an indirect jump, denoted by the \texttt{br} instruction. 
-	\item Use backwards-slicing to find every possible path that could lead to
-		that instruction, with a maximum path length of 50 instructions
+	\item Recover the complete control flow of each function, using standard CFG recovery techniques.
+	\mat{What is 'standard' CFG recovery?}
+	\item Mark all indirect jump locations, identified by \texttt{br} instructions.
+	\item Backwards-slice the code to find all paths that may lead to
+		this instruction, with a maximum path length of 50 instructions.
+		\mat{Why 50?}
 	\item Reverse-emulate every path, and store every possible (symbolized)
 		value that the register of the indirect call can have.
 	\item If the value that the register can have is the same for every path,
@@ -1165,6 +1163,8 @@ our symbolic emulator. }
 \todo{Here I don't talk about detection of the number of cases of a jump table,
 because I believe there is not much more to explain other than the part in the
 design section. Is this OK?}
+
+\mat{I would add at least a paragraph that makes this a bit more concrete.}
 
 
 \subsection{Jump Table symbolization}
@@ -1374,6 +1374,9 @@ We ran experiments on two machines:
 	\item An Atlas/A57 (2.4GHz) CPU with 64 GB of RAM
 \end{itemize}
 
+\mat{Why use two machines? A low end and a high end configuration to highlight the two different
+device classes.}
+
 To benchmark the performance of rewritten binaries, we used the SPEC CPU 2017
 benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
 \sysname does not (yet) support the symbolization of C++ exceptions. The list of the
@@ -1443,7 +1446,7 @@ for \texttt{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
 Interestingly, we managed to have such a low overhead only after the
 elimination of literal pools to symbolize pointer building. When using literal
 pools, the average overhead was 3.5\%, with the maximum value being at 10.7\%
-for \texttt{perlbench} (see \autoref{slowpools} for more details) \todo{this is not true, as it was run on different machines. Re-run
+for \texttt{perlbench} (see \autoref{slowpools} for more details) \todo{update, both experiments were run on different machines. Re-run
 everything on CloudLab}. 
 
 A noticeable slowdown was introduced in \texttt{perlbench}; while a negative
@@ -1455,6 +1458,7 @@ variable accesses in the binary, as \texttt{perl} is an interpreted language
 (\todo{do we require proof of this?  can we count the number of adrp executed
 during the benchmark?}).
 
+\mat{I would like to see both, the number of adrp instructions in the binary and the number of executed adrp instructions.}
 
 \section{Memory sanitization performance}
 
@@ -1498,14 +1502,14 @@ of those are caused by the fact that without source code, bounds determination i
 in non-heap memory regions. 
 
 \todo{Do we want to show how bad are trampolines? I could design a small experiment around that.}.
-
+\mat{Yes, please do. This highlights the importance of our careful design.}
 
 \todo{Do we want to talk about register savings and of how much time do they gain?}
-
+\mat{Yes please.}
 
 \todo{Do we want to talk about cache misses? I already have scripts to measure them, I just need to 
 run all the benchmarks all over again}
-
+\mat{If you have them sure, but as lower priority. Nice to have but not a must.}
 
 \begin{figure}[h]
 \includegraphics[width=15cm]{cloudlab.pdf}
@@ -1746,7 +1750,7 @@ first reassemblable assembly approaches (symbolization),
 \texttt{Repica}~\cite{repica} is probably the most recent addition to binary 
 rewriters aimed at ARM binaries.  
 
-\todo{Maybe add Bistro?}~\cite{bistro}
+\todo{Discuss Bistr?}~\cite{bistro}
 
 For more check out recent surveys on the area of binary rewriting~\cite{binaryrewritingsurvey}
 
