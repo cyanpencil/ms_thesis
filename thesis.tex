@@ -1386,8 +1386,8 @@ the Atlas machine, while some of the benchmarks were not run on the raspberry be
 of the experiments. The Atlas machine was generously hosted by the CloudLab
 pojerct~\cite{cloudlab} in their Utah data center. 
 
-The benchmarks were compiled with the gcc compiler version 7.5.0 on a freshly
-installed Ubuntu 18.04 operating system. The following command line flags were
+The benchmarks were compiled with the gcc compiler version 7.5.0 on 
+Ubuntu 18.04. The following command line flags were
 used to compile the baseline benchmark binaries: \texttt{-O3
 -fno-tree-loop-vectorize -fno-unsafe-math-optimizations -fgnu89-inline
 -fno-strict-aliasing}, in addition to the flags to produce position independent
@@ -1406,29 +1406,51 @@ instrumentation approach, by using Valgrind with the memory sanitization option
 (\texttt{valgrind --tool=memcheck}).
 
 
+\section{Performance}
+
+%.text size
+%imagick_r    -  00000000001d87ec
+%lbm_r        -  000000000000290c
+%ldecod_r     -  0000000000090494
+%mcf_r        -  00000000000078f4
+%nab_r        -  000000000002f8c4
+%perlbench_r  -  00000000001f96ec
+%x264_r       -  0000000000089a7c
+%xz_r         -  000000000002731c
+
+% number of functions
+%cpugcc_r     -  11799
+%imagick_r    -  2187
+%lbm_r        -  28
+%ldecod_r     -  697
+%mcf_r        -  46
+%nab_r        -  235
+%perlbench_r  -  2408
+%x264_r       -  547
+%xz_r         -  360
 
 
 \begin{table}
 \centering
-\begin{tabular}{lrr}
+\begin{tabular}{lrrrr}
 \toprule
-	\textbf{Name} & \textbf{Size} & \textbf{Stripped size} \\
+	\textbf{Name} & \textbf{Size} & \textbf{Stripped size} &  \textbf{.text size} & \textbf{Functions} \\
 \toprule
-	\texttt{cpugcc\_r   }              & 63 MB  & 10 MB  \\
-	\texttt{perlbench\_r} \hspace{2em} & 11 MB  & 2.5 MB \\
-	\texttt{imagick\_r  }              & 2.4 MB & 2.2 MB \\
-	\texttt{x264\_r }                  & 687 KB & 645 KB \\
-	\texttt{nab\_r      }              & 249 KB & 229 KB \\
-	\texttt{xz\_r   }                  & 244 KB & 215 KB \\
-	\texttt{mcf\_r      }              & 45 KB  & 38 KB  \\
-	\texttt{lbm\_r      }              & 23 KB  & 18 KB  \\
+	\texttt{cpugcc\_r   }              & 63 MB  & 10 MB  & 8912092 & 11799 \\
+	\texttt{perlbench\_r} \hspace{2em} & 11 MB  & 2.5 MB & 2070252 & 2408  \\
+	\texttt{imagick\_r  }              & 2.4 MB & 2.2 MB & 1935340 & 2187  \\
+	\texttt{x264\_r }                  & 687 KB & 645 KB & 563836  & 547   \\
+	\texttt{nab\_r      }              & 249 KB & 229 KB & 194756  & 235   \\
+	\texttt{xz\_r   }                  & 244 KB & 215 KB & 160540  & 360   \\
+	\texttt{mcf\_r      }              & 45 KB  & 38 KB  & 30964   & 46    \\
+	\texttt{lbm\_r      }              & 23 KB  & 18 KB  & 10508   & 28    \\
 \bottomrule
 \end{tabular}
-\caption{Name and size of the SPEC CPU2017 benchmarks written in C.}
+	\caption{Name and size of the SPEC CPU2017 benchmarks written in C. \todo{add basic block number}}
 \label{tabularasa}
 \end{table}
 
-\section{Symbolization performance}
+\subsection{Symbolization performance}
 
 As can be seen from \autoref{plot1} and \autoref{plot2}, the overhead of the
 symbolization process is very small. Detailed results can be found in
@@ -1460,7 +1482,7 @@ during the benchmark?}).
 
 \mat{I would like to see both, the number of adrp instructions in the binary and the number of executed adrp instructions.}
 
-\section{Memory sanitization performance}
+\subsection{Memory sanitization performance}
 
 In this section we compare the overhead introduced by \sysname's memory
 sanitization instrumentation and the overhead introduced by adding memory
@@ -1496,10 +1518,11 @@ memory sanitization (Valgrind's \texttt{memcheck} tool~\cite{valgrind}), and plo
 \autoref{plot1} and \autoref{plot2}. The overhead introduced by dynamic instrumentation is around 10x the 
 overhead of binary ASAN, depending on the amount of memory accesses of the benchmark. 
 
-However, it needs to be said that our binary ASAN instrumentation has a few shortcomings. First of all,
-stack variables access is not instrumented. Secondly, global variable accesses are not instrumented. Both
-of those are caused by the fact that without source code, bounds determination is impossible for variables
-in non-heap memory regions. 
+However, it needs to be said that our binary ASAN instrumentation has a few
+shortcomings. First of all, stack variables access is not instrumented.
+Secondly, global variable accesses are not instrumented. Both of those are
+caused by the fact that without source code, bounds determination is impossible
+for variables in non-heap memory regions. 
 
 \todo{Do we want to show how bad are trampolines? I could design a small experiment around that.}.
 \mat{Yes, please do. This highlights the importance of our careful design.}
@@ -1608,6 +1631,38 @@ of pointers by using literal pools and by using symbolized pointer building.
 \end{table}
 
 
+\section{Correctness}
+
+While the SPEC CPU benchmark checks the validity of the output of each benchmark
+that is run, we decided that we wanted further proof of the correctness of our
+approach with more widely used and common binaries. For this reason, we selected
+the coreutils suite of tools, and ran their tests on the binaries rewritten
+with \sysname. 
+
+We used the release 8.32 package downloaded from
+\url{https://ftp.gnu.org/gnu/coreutils/}. We first built the binaries using
+\texttt{make}, then rewrote every single one of them two times: first, without
+instrumentation, and then with memory sanitization enabled. We then ran
+the extensive version of their testsuite with \texttt{make check-very-expensive}. 
+
+The results of the tests can be seen in \autoref{coreutils}. Of the 4 failed tests with memory sanitization turned on, two of them are caused by the testsuite trying to \texttt{LD\_PRELOAD} libraries (which is not compatible with AddressSanitizer) in the \texttt{stdbuf} tests, and the other two are because of the overhead of the instrumentation that triggers a timeout in the tests.
+
+
+\begin{table}
+\centering
+\begin{tabular}{lrr}
+\toprule
+	& \textbf{Symbolization only} & \textbf{Binary ASAN} \\
+\toprule
+	Total              & 510 & 510 \\
+	Passed              & 510  & 507  \\
+	Skipped              & 0  & 0  \\
+	Failed              & 0  & 3  \\
+\bottomrule
+\end{tabular}
+\caption{Results of the coreutils ``very expensive'' test suite on binaries rewritten through \sysname, comparing memory sanitization enabled or disabled.}
+\label{coreutils}
+\end{table}
 
 
 %\hrule
