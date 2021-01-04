@@ -547,11 +547,10 @@ avoid limiting any kind of instrumentation.
 \section{System architecture}
 
 \begin{figure}[h]
-\includegraphics[width=15cm]{symbolizer.jpg}
+\includegraphics[width=15cm]{symbolizer.png}
 \centering
 \caption{Overview of the structure of \sysname}
 \end{figure}
-\mat{Fix figure.}
 
 \sysname is divided into two main components: the symbolizer and the 
 instrumentation.  The symbolizer takes care of loading and analyzing a binary, 
@@ -901,13 +900,13 @@ This approach alone was not enough because of the following
 difficulties:
 
 \begin{itemize}
-	\item Multiple pointers built with the same \texttt{adrp}: As can be seen 
-		in \autoref{pointers}, sometimes the same \texttt{adrp} page loading 
-		instruction is used for multiple pointer constructions, sometimes very 
-		far away from each other
+	\item Multiple pointers built with the same \texttt{adrp}:
+		\autoref{pointers} shows how sometimes the same \texttt{adrp} page
+		loading instruction is used for multiple pointer constructions,
+		sometimes very far away from each other
 	\item Moving base page register: another difficulty was that sometimes the 
 		register used to store the base page changed in the middle of the 
-		pointer construction, as can be seen in \autoref{pointers2}
+		pointer construction, like in \autoref{pointers2}
 	\item Base register stack saving: in very large functions, sometimes the 
 		base registers were loaded at the start and saved on the stack, to be 
 		later restored and used for pointer building. An example is present in 
@@ -1046,8 +1045,8 @@ the offset inside a page).
 
 Switch statements in \texttt{ARM} binaries are stored as a table of offsets,
 instead of absolute addresses like in \texttt{x86}. This makes symbolizing them
-particularly tricky. First of all, detecting them is not easy. As can be seen
-in Listing \ref{omgjmptbl}, they do not have a particular pattern in memory. In
+particularly tricky. First of all, detecting them is not easy. Listing
+\ref{omgjmptbl}shows how they do not have a particular pattern in memory. In
 this section we will go over what was our approach to finding them and how did
 we symbolize them without breaking their functionality.
 
@@ -1100,12 +1099,10 @@ code pointers, for example through
 Our algorithm to detect a jump table pattern works as follows:
 
 \begin{itemize}
-	\item Recover the complete control flow of each function, using standard CFG recovery techniques.
-	\mat{What is 'standard' CFG recovery?}
+	\item Recover the complete control flow of each function, using the linear sweep technique.
 	\item Mark all indirect jump locations, identified by \texttt{br} instructions.
 	\item Backwards-slice the code to find all paths that may lead to
-		this instruction, with a maximum path length of 50 instructions.
-		\mat{Why 50?}
+		this instruction, with a maximum path length of 50 instructions. This upper bound is generous (in all the cases we analyzed 15 instructions were enough) and prevents computationally expensive path explosions.
 	\item Reverse-emulate every path, and store every possible (symbolized)
 		value that the register of the indirect call can have.
 	\item If the value that the register can have is the same for every path,
@@ -1355,12 +1352,6 @@ conditional branch for the error checking.
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
 %%%%%%%%%%%%%%%%%%%%
-%In the evaluation you convince the reader that your design works as intended.
-%approach without needing to do any heuristics at all. In the case we are not able
-%Describe the evaluation setup, the designed experiments, and how the
-%experiments showcase the individual points you want to prove.
-
-%This section is usually 5-10 pages.
 
 
 In this section we validate the claims that we made earlier by performing experiments.
@@ -1381,17 +1372,21 @@ To benchmark the performance of rewritten binaries, we used the SPEC CPU 2017
 benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
 \sysname does not (yet) support the symbolization of C++ exceptions. The list of the
 benchmarks can be seen in \autoref{tabularasa}.  All of the benchmarks were run on
-the Atlas machine, while some of the benchmarks were not run on the raspberry because
-4GB of RAM were not enough to avoid using swap memory, compromising the results
-of the experiments. The Atlas machine was generously hosted by the CloudLab
-pojerct~\cite{cloudlab} in their Utah data center. 
+both machines, but on the raspberry some benchmarks were excluded from the results
+as 4GB of RAM were not enough to avoid using swap memory, compromising the
+experiments. The Atlas machine was generously hosted by the
+CloudLab project~\cite{cloudlab} in their Utah data center. 
 
-The benchmarks were compiled with the gcc compiler version 7.5.0 on 
-Ubuntu 18.04. The following command line flags were
-used to compile the baseline benchmark binaries: \texttt{-O3
--fno-tree-loop-vectorize -fno-unsafe-math-optimizations -fgnu89-inline
--fno-strict-aliasing}, in addition to the flags to produce position independent
-executables. To demonstrate the scalability of our approach, we will rewrite
+The benchmarks were compiled with the gcc compiler version 7.5.0 on Ubuntu
+18.04. The following command line flags were used to compile the baseline
+benchmark binaries: \texttt{-O3 -fgnu89-inline -fno-strict-aliasing}, in
+addition to the flags to produce position independent executables. 
+The \texttt{-fgnu89-inline} flag uses GNU semantics for inline functions, and
+resolves issues with duplicate symbols errors during the compilation of the
+\texttt{gcc} benchmark.  The \texttt{-fno-strict-aliasing} flag disables GCC's
+aggressive aliasing compilation,and is recommended to be used by the SPEC CPU
+manual~\cite{specaliasing} to avoid problems with the \texttt{perlbench}
+benchmark.  To demonstrate the scalability of our approach, we rewrite
 binaries as large as the \texttt{gcc} benchmark (> 10MB).
 
 
@@ -1452,13 +1447,13 @@ instrumentation approach, by using Valgrind with the memory sanitization option
 
 \subsection{Symbolization performance}
 
-As can be seen from \autoref{plot1} and \autoref{plot2}, the overhead of the
+\autoref{plot1} and \autoref{plot2} demonstrate how the overhead of the
 symbolization process is very small. Detailed results can be found in
 \autoref{labellatabella}.  The average overhead is 0.76\%, in line with other
 state of the art static rewriters~\cite{egalito}.  This kind of overhead is
 probably due to unoptimal realignment of sections and code, as we produce
-position independent assembly and we do not optimize for cache hits or anything
-else, leaving this work entirely to the linker. Another important
+position independent assembly without low level optimizations such as cache
+hits maximization, leaving this work entirely to the linker. Another important
 factor for the overhead is that each pointer building instruction \texttt{adrp}
 is symbolized with two instructions (an \texttt{adrp} followed by an
 \texttt{add}); so for each global variable access the binary makes the CPU will
@@ -1545,7 +1540,7 @@ run all the benchmarks all over again}
 \begin{figure}[h]
 \includegraphics[width=\textwidth]{raspberry.pdf}
 \centering
-\caption{Benchmark runtime on the raspberry machine. \todo{fix label names} }
+\caption{Benchmark runtime on the raspberry machine.}
 \label{plot2}
 \end{figure}
 \end{center}
@@ -1576,60 +1571,68 @@ and the original benchmarks compiled with source based ASAN.
 \end{table}
 
 
-%\begin{table}
-%\centering
-%\sisetup{detect-weight=true}
-%\sisetup{mode=text}
-%\robustify\bfseries
-	%\begin{tabular}{lS[table-format=1.2]S[table-format=3.2]}
-%\toprule
-%\textbf{Name} \hspace{4em} & {\textbf{Literal pools}} & {\parbox[c]{5cm}{\centering\textbf{Symbolized}\\ \textbf{pointer building}}} \\
+\begin{table}
+\centering
+\sisetup{detect-weight=true}
+\sisetup{mode=text}
+\robustify\bfseries
+	\begin{tabular}{lrSS[table-format=1.2]S[table-format=3.2]}
+\toprule
+		\textbf{Name} \hspace{4em} & {\parbox[c]{2.5cm}{\centering\textbf{Static pointer}\\ \textbf{constructions}}} & {\parbox[c]{3.5cm}{\centering\textbf{Dynamic pointer}\\ \textbf{constructions}}} & {\textbf{Literal pools}} & {\parbox[c]{3.5cm}{\centering\textbf{Symbolized}\\ \textbf{pointer building}}} \\
 
-%\toprule
+\toprule
 
-	%\texttt{perlbench\_r} & 2.91\si{\percent} & 10.71\si{\percent} \\
-	%\texttt{imagick\_r}   & 0.30\si{\percent} & 1.07\si{\percent} \\
-	%\texttt{nab\_r      } & 0.34\si{\percent} & 0.00\si{\percent} \\
-	%\texttt{xz\_r   }     & 0.44\si{\percent} & 2.39\si{\percent} \\
-	%\texttt{mcf\_r      } & -0.07\si{\percent}& 2.42\si{\percent} \\
-	%\texttt{lbm\_r      } & 0.59\si{\percent} & 0.91\si{\percent} \\
-	%\midrule
-	%\textbf{Average} & \bfseries 0.76\% & \bfseries 3.5\% \\
-%\bottomrule
-%\end{tabular}
-%\caption{Overhead of \sysname without instrumentation comparing the recovery 
-%of pointers by using literal pools and by using symbolized pointer building.
-%\todo{The symbolized pointer building column needs to be redone from scratch} } 
-%\label{slowpools}
-%\end{table}
+		%\texttt{perlbench\_r} & 34285 & 1.6$e^{11}$ & 10.71\si{\percent} & 5.21 \si{\percent} \\
+		%\texttt{imagick\_r}   & 19127 & 1.6$e^{10}$ & 1.07 \si{\percent} & 0.33 \si{\percent} \\
+		%\texttt{nab\_r      } & 2003  & 2.8$e^{10}$ & 0.00 \si{\percent} & 0.00 \si{\percent} \\
+		%\texttt{xz\_r   }     & 1087  & 1.4$e^9$    & 2.39 \si{\percent} & 2.39 \si{\percent} \\
+		%\texttt{mcf\_r      } & 108   & 7.9$e^6$    & 2.42 \si{\percent} & 1.20 \si{\percent} \\
+		%\texttt{lbm\_r      } & 90    & 3.6$e^5$    & 0.91 \si{\percent} & 1.03 \si{\percent} \\
+		%\textbf{Average} &&& \bfseries 3.51\% & \bfseries 1.94\% \\
+		% old raspberry results
+
+		\texttt{perlbench\_r} & 34285 & 1.6$e^{11}$ & 19.48\si{\percent} & 2.91  \si{\percent} \\
+		\texttt{gcc\_r}       & 9095  & 1.2$e^{9}$  & 4.10 \si{\percent} & 0.95  \si{\percent} \\
+		\texttt{imagick\_r}   & 19127 & 1.6$e^{10}$ & 1.75 \si{\percent} & 0.30  \si{\percent} \\
+		\texttt{nab\_r      } & 2003  & 2.8$e^{10}$ & 0.88 \si{\percent} & 0.34  \si{\percent} \\
+		\texttt{xz\_r   }     & 1087  & 1.4$e^9$    & 0.33 \si{\percent} & 0.44  \si{\percent} \\
+		\texttt{mcf\_r      } & 108   & 7.9$e^6$    & 1.07 \si{\percent} & -0.07 \si{\percent} \\
+		\texttt{lbm\_r      } & 90    & 3.6$e^5$    & 0.08 \si{\percent} & 0.59  \si{\percent} \\
+	\midrule
+		\textbf{Average} &&& \bfseries 4.10\% & \bfseries 0.76\% \\
+\bottomrule
+\end{tabular}
+\caption{Overhead of \sysname on the Atlas machine without instrumentation
+	comparing the recovery of pointers by using literal pools and by using
+	symbolized pointer building.}
+\label{slowpools}
+\end{table}
 
 \begin{table}
 \centering
 \sisetup{detect-weight=true}
 \sisetup{mode=text}
 \robustify\bfseries
-	\begin{tabular}{lS[table-format=1.2]S[table-format=3.2]}
+	\begin{tabular}{lSS[table-format=1.2]S[table-format=3.2]}
 \toprule
-\textbf{Name} \hspace{4em} & {\textbf{Literal pools}} & {\parbox[c]{5cm}{\centering\textbf{Symbolized}\\ \textbf{pointer building}}} \\
+		\textbf{Name} \hspace{4em} & \textbf{Binary ASAN} & \textbf{Trampoline ASAN} \\
 
 \toprule
-
-	\texttt{perlbench\_r} & 10.71\si{\percent} & 5.21 \si{\percent} \\
-	\texttt{imagick\_r}   & 1.07 \si{\percent} & 0.33 \si{\percent} \\
-	\texttt{nab\_r      } & 0.00 \si{\percent} & 0.00 \si{\percent} \\
-	\texttt{xz\_r   }     & 2.39 \si{\percent} & 2.39 \si{\percent} \\
-	\texttt{mcf\_r      } & 2.42 \si{\percent} & 1.20 \si{\percent} \\
-	\texttt{lbm\_r      } & 0.91 \si{\percent} & 1.03 \si{\percent} \\
+		\texttt{perlbench\_r} &  260.10 \si{\percent} & 636.41  \si{\percent} \\
+		\texttt{imagick\_r}   &  71.17  \si{\percent} & 188.96  \si{\percent} \\
+		\texttt{nab\_r      } &  27.21  \si{\percent} & 77.82  \si{\percent} \\
+		\texttt{xz\_r   }     &  144.76 \si{\percent} & 232.64  \si{\percent} \\
+		\texttt{mcf\_r      } &  83.74  \si{\percent} & 135.31 \si{\percent} \\
+		\texttt{lbm\_r      } &  97.31  \si{\percent} & 104.79  \si{\percent} \\
 	\midrule
-	\textbf{Average} & \bfseries 3.51\% & \bfseries 1.94\% \\
+		\textbf{Average} & \bfseries 109.73\% & \bfseries 227.38\% \\
 \bottomrule
 \end{tabular}
-\caption{Overhead of \sysname on the Raspberry without instrumentation comparing the recovery 
-of pointers by using literal pools and by using symbolized pointer building.
-\todo{The symbolized pointer building column needs to be redone, possibly on the CloudLab machine} } 
-\label{slowpools}
+\caption{Overhead of \sysname's in-place instrumentation and trampoline-based
+	instrumentation using memory sanitization as the instrumentation pass. On average, 
+	trampolines are 56\% slower than in-place instrumentation.}
+\label{slowtrampolines}
 \end{table}
-
 
 \section{Correctness}
 
@@ -1645,7 +1648,12 @@ We used the release 8.32 package downloaded from
 instrumentation, and then with memory sanitization enabled. We then ran
 the extensive version of their testsuite with \texttt{make check-very-expensive}. 
 
-The results of the tests can be seen in \autoref{coreutils}. Of the 4 failed tests with memory sanitization turned on, two of them are caused by the testsuite trying to \texttt{LD\_PRELOAD} libraries (which is not compatible with AddressSanitizer) in the \texttt{stdbuf} tests, and the other two are because of the overhead of the instrumentation that triggers a timeout in the tests.
+The results of the tests can be seen in \autoref{coreutils}. Of the 4 failed
+tests with memory sanitization turned on, two of them are caused by the
+testsuite trying to \texttt{LD\_PRELOAD} libraries (which is not compatible
+with AddressSanitizer) in the \texttt{stdbuf} tests, and the other two are
+because of the overhead of the instrumentation that triggers a timeout in the
+tests.
 
 
 \begin{table}
@@ -1654,89 +1662,16 @@ The results of the tests can be seen in \autoref{coreutils}. Of the 4 failed tes
 \toprule
 	& \textbf{Symbolization only} & \textbf{Binary ASAN} \\
 \toprule
-	Total              & 510 & 510 \\
-	Passed              & 510  & 507  \\
-	Skipped              & 0  & 0  \\
-	Failed              & 0  & 3  \\
+	Total              & 621 & 621 \\
+	Passed              & 540  & 536  \\
+	Skipped              & 81  & 81  \\
+	Failed              & 0  & 4  \\
 \bottomrule
 \end{tabular}
-\caption{Results of the coreutils ``very expensive'' test suite on binaries rewritten through \sysname, comparing memory sanitization enabled or disabled.}
+\caption{Results of the coreutils ``very expensive'' test suite on binaries rewritten through \sysname, comparing memory sanitization enabled or disabled. The skipped tests are due to uninstalled third-party dependencies, or architecture specific features missing on the Raspberry.}
 \label{coreutils}
 \end{table}
 
-
-%\hrule
-%A. ScalabilityTable II shows a list of all successfully rewritten binariesand
-%their sizes as part of the evaluation, demonstrating thescalability
-%ofRetroWrite(RQ1). Prior work on reassem-bleable assembly uses coreutils to
-%evaluate scalability to realworld software, which have a median size of 394KB
-%and a
-
-%maximum size of 1.3MB. As Table II shows, we evaluate on12 binaries that are
-%larger than a megabyte, with a mediansize of 1.09MB (2.7xlarger) and maximum
-%size of 12MB (9.2xlarger). Consequently, we are confident
-%thatRetroWritecanrewrite arbitrary C binaries.B. Memory Checker — PerformanceWe
-%evaluate the performance ofASan-retrowriteon the SPEC CPU2006 C benchmarks.
-%Since the orig-inal benchmarks exhibit some memory safety violations,we applied
-%patches provided in Google’s Address Sani-tizer repository [53]. The Google
-%patch blacklists instru-mentation of certain functions in perlbench,
-%e.g.,char*movenoasan, as they cause violations. Our initial eval-uation
-%ofASan-retrowritereported a use-after-free inthe above function, after which we
-%manually removed ASanchecks from the same function for evaluation. All code
-%wascompiled with options:-O2 -std=gnu89andgcc-5.4.0and flags to produce
-%position-independent executables. Val-grind was configured to track the same
-%set of features as ASan.Our evaluation indicates that on an average we are
-%about300% better than Valgrind, and 65% slower than ASan.We present a detailed
-%view of our results in Figure 3.The main reason for ASan’s low-overhead when
-%comparedto other memory checkers is its highly optimized memorycheck
-%instrumentation. Therefore, any additional overhead isclearly visible in
-%long-running benchmarks. We identified thefollowing as causes for the overhead
-%ofASan-REtrowrite when compared to ASan
-
-
-%1)Instrumentation Locations.ASan-retrowritein-struments  more  locations  than
-%source  ASan.  Thecompiler-based instrumentation removes some checks ifit can
-%prove accesses are safe.2)Register Spills.As register allocation happens
-%lateduring code generation, the compiler considers boththe original code and
-%the instrumentation, therebygenerating better register allocation with fewer
-%spills.ASan-retrowriteis limited to a conservative reg-ister liveness analysis
-%and opportunistically uses deadregisters to reduce register spills, but cannot
-%change theregister allocation scheme as a whole.3)Optimized Checks Placement.To
-%reduce register pres-sure, or flag recomputations, source-based ASan is freeto
-%move the memory check instrumentation (accordingto language semantics).
-%However, our binary ASan can-not do this as hoisting checks is not always safe
-%andneeds more principled compiler-like analysis.4)Loop Hoisting.Checking
-%contiguous memory accessesin hot loops can be expensive. As a part of the
-%op-timization pipeline, a compiler may choose to hoistsuch checks out of the
-%loop and perform a singlecheck to reduce the overall overhead. Though
-%possible,implementing such loop-hoisting mechanisms are a lotharder, mainly due
-%to lack of abstractions such as loopsin the binary level.
-
-%\hrule
-
-%\section{Experiment overview}
-%\todo{Explain our setup, the hardware we used, what we were measuring.}
-
-%\todo{Talk a bit on also the difficulties caused by the nature of the 
-%benchmarks, namely very long times (up to 48 hours, and probably more now that 
-%I have CloudLab :D ), very high RAM usage, and so on.}
-
-%\todo{(OPTIONAL) Talk a bit on how those difficulties were approached, with the 
-%very strict collection of experiment metadata using Github CI and the telegram 
-%bot.}
-
-%\section{SPEC CPU}
-%\todo{Explain how much do I hate the SPEC CPU benchmark, who developed it, the 
-%crazy fact that it is the accepted state of the art method for benchmarking 
-%single-core performance, how counter-intuitive their directory structure, 
-%config files, and bash scripts are.  /s}
-
-%\section{Results}
-%\todo{Present  plots and tables, and a detailed explanation on each one.
-%Make sure to respect the style of Mathias' previous papers/theses, to avoid 
-%getting him unnecessarily angry}
-
-%\todo{Compare it to state-of-the-art dynamic instrumentation (QEMU).}
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -1852,10 +1787,6 @@ passes or new mitigations should be easy. To name a few, the interesting ones wo
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Conclusion}
 %%%%%%%%%%%%%%%%%%%%
-
-%In the conclusion you repeat the main result and finalize the discussion of
-%your project. Mention the core results and why as well as how your system
-%advances the status quo.
 
 
 In summary, we develop the ARM architecture implementation of the \sysname 
