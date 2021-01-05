@@ -62,7 +62,7 @@
 \supervisor{Prof. Kenny Paterson (ETH)}
 
 \linespread{1.5} 
-\newcommand{\sysname}{RetroWrite\xspace}
+\newcommand{\sysname}{RetroWrite\_ARM\xspace}
 
 %\newcommand{\todo}[1]{\colorbox{cyan}{\parbox{0.9\textwidth}{#1}}}
 %\newcommand{\todo}[1]{%
@@ -167,10 +167,10 @@
 	is a viable alternative to existing approaches, that has less flexibility 
 	(only works on C, position independent binaries) but has
 	negligible overhead compared to compiled source code. We present 
-	RetroWrite-ARM, a \emph{zero-overhead} static binary rewriter for \texttt{aarch64}
+	\sysname, a \emph{zero-overhead} static binary rewriter for \texttt{aarch64}
 	executables that solves key challenges such as pointer construction
 	detection and jump table instrumentation, based on 
-	the \sysname project.
+	the RetroWrite\_x64 project.
 
 	Our proof of work implementation of a memory sanitizer instrumentation
 	pass has the same functionality of the source-based counterpart, and our
@@ -222,49 +222,126 @@ overhead for dynamic rewriting and limited rewriting capabilities for static
 solutions.
 
 While there is no shortage of static rewriters targeted towards the
-\texttt{x86} architecture, only a few support \texttt{ARM}. One of the reasons
-behind this is that \texttt{ARM} CPUs were not popular until very recently;
-furthermore \texttt{ARM} poses very different challenges in the realm of static
-rewriting. Trampolines and other kinds of instrumentation are made much easier
-by the fixed-size instruction set, as problems such as overwriting instructions
-shorter than a jump are not present.  However, that does not hold true for all
-instrumentation techniques: the modern \emph{symbolization} approach for
-instrumentation that \sysname and other recent binary rewriters adopted becomes
-particularly harder. 
+\texttt{x86} architecture, only a few support \texttt{ARM}. In fact, \texttt{ARM} binaries
+require a very different kind of static analysis than \texttt{x86}, and present
+many challenges that were not present before. Those challenges derive from the
+fact that the \texttt{ARM} ISA is fixed-size, and all instructions occupy exactly
+4 bytes. Since addresses in the 64 bit space are 8-byte long, they do not fit 
+into a single instruction, and executables must ``craft'' addresses in various
+ways (storing them in memory at compile time, or using arithmetic expressions to 
+construct them). A number of static analysis techniques commonly used on \texttt{x86}
+are not usable anymore on \texttt{ARM} for this very reason.
+There are a number of \emph{dynamic} rewriters that support \texttt{ARM}, as
+they work by running together with the binary to instrument and modifying
+it in real time: this allows them to use powerful dynamic analysis techniques to 
+recover more information about the binary, but as a side effect they introduce
+very large overhead even with very light instrumentation.
 
-Symbolization is the process of substituting pointers and references in the 
-executable with assembly labels, in order to permit arbitrary insertion of 
-instructions without breaking the original functionality of a binary. On 
-\texttt{ARM} there is the non-trivial problem of the detection of pointer 
-constructions, as since a whole pointer does not fit into a single instructions 
-it is very common to build pointers at runtime through multiple memory and 
-arithmetic instructions. Furthermore, after detecting the construction of a 
-pointer, it is not clear how the construction could be cleanly substituted with 
-an assembly label. 
+Introducing only a small overhead onto an instrumented binary is a very desirable feature to 
+have into a binary rewriter, as nowadays the largest use case of binary instrumentation
+is the introduction of fuzzing hooks and memory sanitization checks in a closed 
+source binary to drastically improve the efficiency of modern fuzzing
+engines. Using a static binary rewriter versus a dynamic one can when
+fuzzing can lead to an order of magnitude more executions per second. 
 
-Another problem specific of the \texttt{ARM} architecture that affects binary 
-rewriting is caused by how jump tables are stored in memory. Contrary to 
-\texttt{x86}, jump tables are stored as offsets from the base case, and are 
-often \emph{compressed}, i.e., each case takes much less space than the size of 
-a pointer (usually one or two bytes is enough). Detecting them is hard, as they 
-look like random bytes when inspecting memory (and code will access them 
-through pointer construction); symbolizing them is even harder, as inserting 
-instrumentation could break the compression in memory.
+Fuzzing on the \texttt{ARM} architecture has had very little growth when
+compared to \texttt{x86}, and one of the main causes is that the required
+instrumentation passes to fuzz are supported only by heavy dynamic binary
+rewriters, which lead to low fuzzing performances.
+The fact that \texttt{ARM} became popular only very recently, combined with the 
+difficulty of performing static analysis on it, are the reasons behind the lack
+of advanced static binary rewriters for \texttt{ARM}. In fact, most of the existing
+ones rely on simpler techniques (like \emph{trampolines}) that need only 
+superficial analysis, but are not flexible and incur in very large overhead. 
 
-State-of-the-art binary rewriters for \texttt{ARM} use different approaches 
-such as trampolines (which do not incur in the problems stated above, as 
-trampolines only require minimal fixes in the binary to work) or lifting to an 
-intermediate IR.  However, they introduce a non-negligible overhead, as any 
-instrumentation location added now has two additional jumps that need to be 
-executed and that frequently invalidate the code cache. 
+Static analysis is the core foundation on many state-of-the-art static binary
+rewriters: one of the most recent and successful ones for \texttt{x86\_64} is
+RetroWrite~\cite{dinesh20oakland}. It uses a novel technique called
+\emph{symbolization}, which is the process of transforming an executable back
+to an assembly listing that is \emph{re-assemblable}, where absolute addresses
+are substituted with assembly labels (or \emph{symbols}).  Since all addresses
+are subsituted with labels, adding custom code (instrumentation) or arbitrary
+transformation on existing code is very easy, as the resulting assembly can be
+parsed by a generic off-the-shelf assembler into a new, instrumented
+executable. 
 
-In this thesis we present and discuss how we overcame those challenges to make 
-\sysname support \texttt{aarch64} binaries. Through heavy use of 
-backward-slicing static analysis we are able to recover pointer construction 
-patterns; we also avoid breaking jump tables by compressing them in-place even 
-more (if necessary). We also implemented an example instrumentation pass, 
-\emph{AddressSanitizer}, which shows the ease and efficiency of writing 
-instrumentation with the symbolization approach. 
+In this thesis we would like to introduce \sysname, a new, advanced static rewriter 
+for \texttt{ARM64} binaries that builds on the original RetroWrite (from now on
+referred as RetroWrite\_x64) and uses the same \emph{symbolization} technique 
+to allow the development of complex and efficient instrumentation and trasformation
+of closed-source binaries. Our work focuses on the development of novel approaches
+to tackle the static analysis challenges presented by \texttt{ARM} executables 
+such as pointer construction detection and jump table enlargement. We also implement
+an example instrumentation pass (implementing the same algorithm of Google's
+\emph{AddressSanitizer}, an LLVM compiler pass to sanitize memory accesses) to
+show the ease and efficiency of writing instrumentation using the symbolization
+technique, and compare its performance to demonstrate that the execution time is
+comparable to the original LLVM pass (that requires the source code of the
+binary to instrument, so impossible to apply on binary-only modules.) 
+
+The main challenges we had to tackle were the detection and recovery of pointers,
+that are either stored in a read-only region or more commonly are built through
+a series of arithmetic operations because a single pointer cannot fit into a single
+\texttt{ARM} instruction. This required reverse-engineering of patterns of compiler
+generated code and clever ways to transform said arithmetic sequences of instructions
+into symbolized assembly snippets that can support the insertion of arbitrary code in
+between. Another big part of our work focused on the detection, recovery and symbolization
+of jump tables: switch statements on \texttt{ARM} binaries are very different from \texttt{x86}
+(they are stored as a set of offsets from a given base address, not as a sequential list
+of absolute addresses). All the standard heuristics methods that are commonly used
+on \texttt{x86} cannot be used on \texttt{ARM} as the jump tables are indistinguishable
+from random data, so this required the development of new ways to detect them. Furthermore,
+since they are stored \emph{compressed} in memory, they intrinsecally do not support
+the insertion of large instrumentation. We solved this problem with a new technique called
+\emph{jump table enlargement} which lets us introduced arbitrary-sized instrumentation
+inside a jump table. 
+
+
+
+
+%One of the reasons
+%behind this is that \texttt{ARM} CPUs were not popular until very recently;
+%furthermore \texttt{ARM} poses very different challenges in the realm of static
+%rewriting. Trampolines and other kinds of instrumentation are made much easier
+%by the fixed-size instruction set, as problems such as overwriting instructions
+%shorter than a jump are not present.  However, that does not hold true for all
+%instrumentation techniques: the modern \emph{symbolization} approach for
+%instrumentation that \sysname and other recent binary rewriters adopted becomes
+%particularly harder. 
+
+%Symbolization is the process of substituting pointers and references in the 
+%executable with assembly labels, in order to permit arbitrary insertion of 
+%instructions without breaking the original functionality of a binary. On 
+%\texttt{ARM} there is the non-trivial problem of the detection of pointer 
+%constructions, as since a whole pointer does not fit into a single instructions 
+%it is very common to build pointers at runtime through multiple memory and 
+%arithmetic instructions. Furthermore, after detecting the construction of a 
+%pointer, it is not clear how the construction could be cleanly substituted with 
+%an assembly label. 
+
+%Another problem specific of the \texttt{ARM} architecture that affects binary 
+%rewriting is caused by how jump tables are stored in memory. Contrary to 
+%\texttt{x86}, jump tables are stored as offsets from the base case, and are 
+%often \emph{compressed}, i.e., each case takes much less space than the size of 
+%a pointer (usually one or two bytes is enough). Detecting them is hard, as they 
+%look like random bytes when inspecting memory (and code will access them 
+%through pointer construction); symbolizing them is even harder, as inserting 
+%instrumentation could break the compression in memory.
+
+%State-of-the-art binary rewriters for \texttt{ARM} use different approaches 
+%such as trampolines (which do not incur in the problems stated above, as 
+%trampolines only require minimal fixes in the binary to work) or lifting to an 
+%intermediate IR.  However, they introduce a non-negligible overhead, as any 
+%instrumentation location added now has two additional jumps that need to be 
+%executed and that frequently invalidate the code cache. 
+
+%In this thesis we present and discuss how we overcame those challenges to make 
+%\sysname support \texttt{aarch64} binaries. Through heavy use of 
+%backward-slicing static analysis we are able to recover pointer construction 
+%patterns; we also avoid breaking jump tables by compressing them in-place even 
+%more (if necessary). We also implemented an example instrumentation pass, 
+%\emph{AddressSanitizer}, which shows the ease and efficiency of writing 
+%instrumentation with the symbolization approach. 
 
 We will show that our binary rewriter incurs in very low overhead through 
 standard CPU benchmarks used by the scientific community to evaluate rewriters.  
@@ -297,7 +374,13 @@ it to the ARM architecture.
 \section{Binary Rewriting}
 \emph{Binary rewriting} describes the alteration of a compiled program without 
 having the source code at hand in such a way that the binary under 
-investigation keeps the same functionality. The applications of binary 
+investigation keeps the same functionality. 
+Usually binary rewriting is used when there is the need to apply a specific compiler
+pass or code transformation to an executable without the possession of its source code.
+
+
+
+The applications of binary 
 rewriting are multiple and can be summarized as follows:
 \begin{itemize}
 	\item \textbf{Cross ISA binary translation}: A binary translator is a special
@@ -451,7 +534,7 @@ popular in C/C++ codebases.
 \section{The ARM architecture}
 We will provide a short summary of what are the main differences between 
 \texttt{x86} and ARM, with particular focus on the ones that proved to be 
-source of non trivial problems during the porting of \sysname.
+source of non trivial problems during the development of \sysname.
 \begin{itemize}
 	\item \emph{Fixed-size instruction set}: Contrary to \texttt{x86}, the ARM 
 		instructions are all of the same size, fixed to the value of 4 bytes.  
@@ -1567,7 +1650,7 @@ It's interesting to look at detailed results for the Atlas machine in
 \autoref{labellatabella}. We can see that source-based ASAN has a 84.04\%
 overhead on average, but the overhead varies a lot between individual
 benchmarks, depending on the amount of memory accesses. For example,
-\texttt{perlbench}, running an interpreter, makes a high amount of memory loads
+\texttt{perlbench}, running an interpreter, executes a high amount of memory loads
 and stores that need to be individually checked by the address sanitizer each
 time; in fact, the overhead is noticeably higher (173.84\%). The same holds
 true for \sysname's memory sanitization instrumentation (``Binary ASAN'' in
