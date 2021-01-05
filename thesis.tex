@@ -53,7 +53,7 @@
   commentstyle=\color{dkgreen}, 
   stringstyle=\color{mauve},   
   escapeinside={\%*}{*)},     
-  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, ldr, movz}
+  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, b.hi, ldr, movz}
 }
 
 
@@ -1000,12 +1000,13 @@ pools are stored between functions in the \texttt{.text} sections. Since the
 pc-relative load can only target addresses in the $\pm$ 1 MB range, literal
 pools must be stored inside functions if they are larger than 2 MB. 
 
-In our first implementation we used literal pools to symbolize pointers, but we 
-detected noticeable overhead introduced even without instrumentation added. The runtime
-of binaries without instrumentation was around 10\% compared to the original binaries. 
-The reason behind the additional overhead is twofold: first, each pointer retrieved through
-literal pools requires a memory access each time; secondly, literal pools occupy precious
-space in the \texttt{.text} section causing more cache misses than necessary. 
+In our first implementation we used literal pools to symbolize pointers, but we
+detected noticeable overhead introduced even without instrumentation added. The
+runtime of binaries without instrumentation was around 5\% higher when compared
+to the original binaries.  The reason behind the additional overhead is
+twofold: first, each pointer retrieved through literal pools requires a memory
+access each time; secondly, literal pools occupy precious space in the
+\texttt{.text} section causing more cache misses than necessary. 
 
 
 \subsubsection{Pointer construction symbolization}
@@ -1128,9 +1129,20 @@ The symbol \texttt{?} is a wildcard for any (positive) integer value.
 table offsets. Finally, \texttt{register\_case\_number} is a register with as
 value the number of the case that is going to be executed. 
 
+Finally, if the indirect call is recognized as a jump table, the last step is
+determining how many cases the switch represented by the jump table is made of.
+We solved this by backward-slicing from the instruction loading the case number
+(\texttt{0x408} in \autoref{emulator}) and looking for an upper-bound
+comparison with a constant value on the register that holds the current case
+number to be executed (\texttt{w1}).  If the comparison is directly followed by
+a jump, than we mark the jump target location as the ``default'' case and set
+the number of cases of the jump table based on the constant of the comparison.
+
 
 \begin{figure}[h]
 \begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+0x3f8: cmp w1, 128
+0x3fc: b.hi .default_case
 0x400: adrp x0, 0x8000
 0x404: add x0, x0, 3
 0x408: ldrb w1, [x0, w1, uxtw]
@@ -1149,19 +1161,13 @@ Result:
 Base case: 0x418
 Jump table addr: 0x8003
 Case number reg: w1
+Number of cases: 128
 Shift: 2
 \end{lstlisting}
 \captionof{lstlisting}{Above: example of a jump table pattern. Below: output of
 our symbolic emulator. }
 \label{emulator}
 \end{figure}
-
-
-\todo{Here I don't talk about detection of the number of cases of a jump table,
-because I believe there is not much more to explain other than the part in the
-design section. Is this OK?}
-
-\mat{I would add at least a paragraph that makes this a bit more concrete.}
 
 
 \subsection{Jump Table symbolization}
@@ -1359,7 +1365,10 @@ We show that \sysname can symbolize and instrument ARM binaries with the perform
 source based instrumentation without compromises on its scalability.
 
 \section{Setup and Hardware} 
-We ran experiments on two machines:
+We decided to run experiments on two different setups. The first is a low end system, while
+the second one is a very high end configuration, in order to highlight the differences between
+the two device classes. 
+The machines we had available are the following:
 \begin{itemize}
 	\item A raspberry Pi 4B, with a Cortex A-72 (1.5GHz) CPU and 4GB of RAM
 	\item An Atlas/A57 (2.4GHz) CPU with 64 GB of RAM
@@ -1386,19 +1395,18 @@ resolves issues with duplicate symbols errors during the compilation of the
 \texttt{gcc} benchmark.  The \texttt{-fno-strict-aliasing} flag disables GCC's
 aggressive aliasing compilation,and is recommended to be used by the SPEC CPU
 manual~\cite{specaliasing} to avoid problems with the \texttt{perlbench}
-benchmark.  To demonstrate the scalability of our approach, we rewrite
-binaries as large as the \texttt{gcc} benchmark (> 10MB).
+benchmark. 
 
-
-
-We evaluate the performance of the symbolization engine by running the
-benchmarks with the binaries of each benchmark rewritten by \sysname without
-adding any kind of instrumentation. We then evaluate the performance of our
-memory sanitization instrumentation pass by comparing it against its source
-based equivalent (\texttt{-fsanitize=address} in the compiler flags), and
-against the equivalent functionality implemented using a dynamic
-instrumentation approach, by using Valgrind with the memory sanitization option
-(\texttt{valgrind --tool=memcheck}).
+To demonstrate the scalability of our approach, we rewrite binaries as large as
+the \texttt{gcc} benchmark (> 10MB).  We evaluate the performance of the
+symbolization engine by running the benchmarks with the binaries of each
+benchmark rewritten by \sysname without adding any kind of instrumentation. We
+then evaluate the performance of our memory sanitization instrumentation pass
+by comparing it against its source based equivalent
+(\texttt{-fsanitize=address} in the compiler flags), and against the equivalent
+functionality implemented using a dynamic instrumentation approach, by using
+Valgrind with the memory sanitization option (\texttt{valgrind
+--tool=memcheck}).
 
 
 \section{Performance}
@@ -1460,35 +1468,109 @@ is symbolized with two instructions (an \texttt{adrp} followed by an
 lose a clock cycle (probably less, as many ARM CPUs have hardware optimizations
 for \texttt{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
 
-Interestingly, we managed to have such a low overhead only after the
-elimination of literal pools to symbolize pointer building. When using literal
-pools, the average overhead was 3.5\%, with the maximum value being at 10.7\%
-for \texttt{perlbench} (see \autoref{slowpools} for more details) \todo{update, both experiments were run on different machines. Re-run
-everything on CloudLab}. 
+Interestingly, at first we used to have substantial overhead from symbolization
+alone.  This was on a early stage of the project, where we used literal pools
+to symbolize global variable pointer constructions, instead of generating
+symbolized pointer constructions ourselves like compilers do, mostly because
+using literal pools was simpler to debug and faster to implement.  However,
+literal pools introduce an additional instruction (a memory load), plus they
+require space in the \texttt{.text} section, reducing cache performance.
+\autoref{slowpools} demonstrates how the much overhead decreased when we
+switched to symbolized pointer constructions, from an average of 4.12\% to
+0.76\%. 
 
-A noticeable slowdown was introduced in \texttt{perlbench}; while a negative
-one in the \texttt{mcf} benchmark. We consider the negative overhead in the
-\texttt{mcf} benchmark to lie inside measurement error \todo{maybe calculate
-standard deviation or error rates to give proof?}. We attribute the larger
-overhead in \texttt{perlbench} to be caused by the vast amounts of global
-variable accesses in the binary, as \texttt{perl} is an interpreted language
-(\todo{do we require proof of this?  can we count the number of adrp executed
-during the benchmark?}).
+The most affected benchmark by the symbolization overhead is
+\texttt{perlbench}, and this fact is consistent with our measurements (as
+\texttt{perlbench} has an order of magnitude more global variable accesses
+executed compared to the other benchmarks,) and is also the benchmark which
+benefited the most from the removal of literal pools.  A negative overhead is
+present on the \texttt{mcf} benchmark, but we consider it small enough to lie
+inside measurement error. 
 
-\mat{I would like to see both, the number of adrp instructions in the binary and the number of executed adrp instructions.}
+
+
+
+\begin{table}
+\centering
+\sisetup{detect-weight=true}
+\sisetup{mode=text}
+\robustify\bfseries
+	\begin{tabular}{lS[table-format=5]S[table-format=11]S[table-format=1.2]S[table-format=3.2]}
+\toprule
+		\textbf{Name} \hspace{4em} &
+		{\parbox[c]{2.5cm}{\centering\textbf{Static pointer\\constructions}}} &
+		{\parbox[c]{3.5cm}{\centering\textbf{Dynamic pointer\\constructions}}} &
+		{\textbf{Literal pools}} &
+		{\parbox[c]{3.5cm}{\centering\textbf{Symbolized\\pointer building}}} \\
+\toprule
+
+		%\texttt{perlbench\_r} & 34285 & 1.6$e^{11}$ & 10.71\si{\percent} & 5.21 \si{\percent} \\
+		%\texttt{imagick\_r}   & 19127 & 1.6$e^{10}$ & 1.07 \si{\percent} & 0.33 \si{\percent} \\
+		%\texttt{nab\_r      } & 2003  & 2.8$e^{10}$ & 0.00 \si{\percent} & 0.00 \si{\percent} \\
+		%\texttt{xz\_r   }     & 1087  & 1.4$e^9$    & 2.39 \si{\percent} & 2.39 \si{\percent} \\
+		%\texttt{mcf\_r      } & 108   & 7.9$e^6$    & 2.42 \si{\percent} & 1.20 \si{\percent} \\
+		%\texttt{lbm\_r      } & 90    & 3.6$e^5$    & 0.91 \si{\percent} & 1.03 \si{\percent} \\
+		%\textbf{Average} &&& \bfseries 3.51\% & \bfseries 1.94\% \\
+		% old raspberry results
+
+		\texttt{perlbench\_r} & 34285 & 168797437831& 19.48\si{\percent} & 2.91  \si{\percent} \\
+		\texttt{gcc\_r}       & 9095  & 1232266305  & 4.10 \si{\percent} & 0.95  \si{\percent} \\
+		\texttt{imagick\_r}   & 19127 & 16275621901 & 1.75 \si{\percent} & 0.30  \si{\percent} \\
+		\texttt{nab\_r      } & 2003  & 28193001045 & 0.88 \si{\percent} & 0.34  \si{\percent} \\
+		\texttt{xz\_r   }     & 1087  & 1471854761  & 0.33 \si{\percent} & 0.44  \si{\percent} \\
+		\texttt{mcf\_r      } & 108   & 7909505     & 1.07 \si{\percent} & -0.07 \si{\percent} \\
+		\texttt{lbm\_r      } & 90    & 36160       & 0.08 \si{\percent} & 0.59  \si{\percent} \\
+	\midrule
+		\textbf{Average} & \text{-} & \hfill\text{-}\hfill & \bfseries 4.12\% & \bfseries 0.76\% \\
+\bottomrule
+\end{tabular}
+\caption{Overhead of \sysname on the Atlas machine without instrumentation
+	comparing the recovery of pointers by using literal pools and by using
+	symbolized pointer building.  }
+\label{slowpools}
+\end{table}
 
 \subsection{Memory sanitization performance}
 
+
 In this section we compare the overhead introduced by \sysname's memory
 sanitization instrumentation and the overhead introduced by adding memory
-sanitization during compilation (\texttt{-fsanitize=address}).  From
-\autoref{labellatabella} we can see that source-based ASAN has a 84.04\%
+sanitization during compilation (\texttt{-fsanitize=address}).  
+
+An overview of the results can be seen in \autoref{plot1} for the Atlas machine,
+and in \autoref{plot2} for the Raspberry. Both figures show the same pattern: 
+memory sanitization introduces some overhead but the execution time is still comparable
+to source-based instrumentation. However, it can be seen that the Raspberry suffered
+from a slightly higher overhead with instrumentation enabled. We think that one of the
+possible causes of this is that a low-end system like the Raspberry suffers more from
+cache misses than a high-end system (and memory sanitization is a very heavy instrumentation
+that increases code size by up to three-fold, substantially degrading cache performance) \todo{are you sure of this??}. 
+
+\begin{figure}[h]
+\includegraphics[width=15cm]{cloudlab.pdf}
+\centering
+	\caption{Benchmark runtime on the Atlas machine. \todo{update plot for new gcc results} } 
+\label{plot1}
+\end{figure}
+
+\begin{center}
+\begin{figure}[h]
+\includegraphics[width=\textwidth]{raspberry.pdf}
+\centering
+	\caption{Benchmark runtime on the raspberry machine. \todo{LBM SOURCE ASAN time is very strange. seems too low. might want to rerun everything to be extra sure. }}
+\label{plot2}
+\end{figure}
+\end{center}
+
+
+It's interesting to look at detailed results for the Atlas machine in 
+\autoref{labellatabella}. We can see that source-based ASAN has a 84.04\%
 overhead on average, but the overhead varies a lot between individual
 benchmarks, depending on the amount of memory accesses. For example,
 \texttt{perlbench}, running an interpreter, makes a high amount of memory loads
 and stores that need to be individually checked by the address sanitizer each
 time; in fact, the overhead is noticeably higher (173.84\%). The same holds
-true for the \sysname's memory sanitization instrumentation (Binary ASAN in
+true for \sysname's memory sanitization instrumentation (``Binary ASAN'' in
 \autoref{labellatabella}): the overhead is larger in programs that frequently
 use memory. 
 
@@ -1506,44 +1588,14 @@ behind the slowdown are the following:
 		do not even come close to the number and complexity of optimizations passes that
 		standard compilers use when generating machine code. 
 \end{itemize}
-Still, the slowdown with respect to source ASAN is very little compared to state of the art tools.
-In fact, without source code, the only way of adding memory sanitization to a binary is through
-dynamic instrumentation. We ran the benchmarks using a very famous dynamic instrumenter that implements
-memory sanitization (Valgrind's \texttt{memcheck} tool~\cite{valgrind}), and plotted the runtimes in
-\autoref{plot1} and \autoref{plot2}. The overhead introduced by dynamic instrumentation is around 10x the 
-overhead of binary ASAN, depending on the amount of memory accesses of the benchmark. 
-
-However, it needs to be said that our binary ASAN instrumentation has a few
-shortcomings. First of all, stack variables access is not instrumented.
-Secondly, global variable accesses are not instrumented. Both of those are
-caused by the fact that without source code, bounds determination is impossible
-for variables in non-heap memory regions. 
-
-\todo{Do we want to show how bad are trampolines? I could design a small experiment around that.}.
-\mat{Yes, please do. This highlights the importance of our careful design.}
-
-\todo{Do we want to talk about register savings and of how much time do they gain?}
-\mat{Yes please.}
-
-\todo{Do we want to talk about cache misses? I already have scripts to measure them, I just need to 
-run all the benchmarks all over again}
-\mat{If you have them sure, but as lower priority. Nice to have but not a must.}
-
-\begin{figure}[h]
-\includegraphics[width=15cm]{cloudlab.pdf}
-\centering
-	\caption{Benchmark runtime on the Atlas machine. \todo{fix label names} \todo{update plot for new gcc results} }
-\label{plot1}
-\end{figure}
-
-\begin{center}
-\begin{figure}[h]
-\includegraphics[width=\textwidth]{raspberry.pdf}
-\centering
-\caption{Benchmark runtime on the raspberry machine.}
-\label{plot2}
-\end{figure}
-\end{center}
+Still, the slowdown with respect to source ASAN is very little compared to
+state of the art tools.  In fact, without source code, the only way of adding
+memory sanitization to a binary is through dynamic instrumentation. We ran the
+benchmarks using a very famous dynamic instrumenter that implements memory
+sanitization (Valgrind's \texttt{memcheck} tool~\cite{valgrind}), and plotted
+the runtimes in \autoref{plot1} and \autoref{plot2}. The overhead introduced by
+dynamic instrumentation is around 10x the overhead of binary ASAN, depending on
+the amount of memory accesses of the benchmark. 
 
 \begin{table}
 \centering
@@ -1571,42 +1623,67 @@ and the original benchmarks compiled with source based ASAN.
 \end{table}
 
 
+However, it needs to be said that our binary ASAN instrumentation has a few
+shortcomings. First of all, stack variables access is not instrumented.
+Secondly, global variable accesses are not instrumented. Both of those are
+caused by the fact that without source code, bounds determination is impossible
+for variables in non-heap memory regions. 
+
+
+\subsection{Optimization: register savings}
+One of the biggest performance improvements in our memory sanitization instrumentation 
+came from the re-usage of free registers without the need to save them on the stack
+at each instrumentation location. 
+
+\autoref{slowregisters} shows the overhead difference in the memory sanitization instrumentation
+when register savings are disabled. On average, register savings improved the overhead of
+the instrumentation pass by xx.xx\% \todo{THIS EXPERIMENT IS STILL RUNNING}
+
 \begin{table}
 \centering
 \sisetup{detect-weight=true}
 \sisetup{mode=text}
 \robustify\bfseries
-	\begin{tabular}{lrSS[table-format=1.2]S[table-format=3.2]}
+	\begin{tabular}{lSS[table-format=1.2]S[table-format=3.2]}
 \toprule
-		\textbf{Name} \hspace{4em} & {\parbox[c]{2.5cm}{\centering\textbf{Static pointer}\\ \textbf{constructions}}} & {\parbox[c]{3.5cm}{\centering\textbf{Dynamic pointer}\\ \textbf{constructions}}} & {\textbf{Literal pools}} & {\parbox[c]{3.5cm}{\centering\textbf{Symbolized}\\ \textbf{pointer building}}} \\
+		\textbf{Name} \hspace{4em} & \textbf{Register savings} & \textbf{No registers} \\
 
 \toprule
-
-		%\texttt{perlbench\_r} & 34285 & 1.6$e^{11}$ & 10.71\si{\percent} & 5.21 \si{\percent} \\
-		%\texttt{imagick\_r}   & 19127 & 1.6$e^{10}$ & 1.07 \si{\percent} & 0.33 \si{\percent} \\
-		%\texttt{nab\_r      } & 2003  & 2.8$e^{10}$ & 0.00 \si{\percent} & 0.00 \si{\percent} \\
-		%\texttt{xz\_r   }     & 1087  & 1.4$e^9$    & 2.39 \si{\percent} & 2.39 \si{\percent} \\
-		%\texttt{mcf\_r      } & 108   & 7.9$e^6$    & 2.42 \si{\percent} & 1.20 \si{\percent} \\
-		%\texttt{lbm\_r      } & 90    & 3.6$e^5$    & 0.91 \si{\percent} & 1.03 \si{\percent} \\
-		%\textbf{Average} &&& \bfseries 3.51\% & \bfseries 1.94\% \\
-		% old raspberry results
-
-		\texttt{perlbench\_r} & 34285 & 1.6$e^{11}$ & 19.48\si{\percent} & 2.91  \si{\percent} \\
-		\texttt{gcc\_r}       & 9095  & 1.2$e^{9}$  & 4.10 \si{\percent} & 0.95  \si{\percent} \\
-		\texttt{imagick\_r}   & 19127 & 1.6$e^{10}$ & 1.75 \si{\percent} & 0.30  \si{\percent} \\
-		\texttt{nab\_r      } & 2003  & 2.8$e^{10}$ & 0.88 \si{\percent} & 0.34  \si{\percent} \\
-		\texttt{xz\_r   }     & 1087  & 1.4$e^9$    & 0.33 \si{\percent} & 0.44  \si{\percent} \\
-		\texttt{mcf\_r      } & 108   & 7.9$e^6$    & 1.07 \si{\percent} & -0.07 \si{\percent} \\
-		\texttt{lbm\_r      } & 90    & 3.6$e^5$    & 0.08 \si{\percent} & 0.59  \si{\percent} \\
+		\texttt{perlbench\_r} &  260.10 \si{\percent} & xxxx  \si{\percent} \\
+		\texttt{imagick\_r}   &  71.17  \si{\percent} & xxxx  \si{\percent} \\
+		\texttt{nab\_r      } &  27.21  \si{\percent} & xxxx  \si{\percent} \\
+		\texttt{xz\_r   }     &  144.76 \si{\percent} & xxxx  \si{\percent} \\
+		\texttt{mcf\_r      } &  83.74  \si{\percent} & xxxx \si{\percent} \\
+		\texttt{lbm\_r      } &  97.31  \si{\percent} & xxxx  \si{\percent} \\
 	\midrule
-		\textbf{Average} &&& \bfseries 4.10\% & \bfseries 0.76\% \\
+		\textbf{Average} & \bfseries 109.73\% & \bfseries xxxx \\
 \bottomrule
 \end{tabular}
-\caption{Overhead of \sysname on the Atlas machine without instrumentation
-	comparing the recovery of pointers by using literal pools and by using
-	symbolized pointer building.}
-\label{slowpools}
+\caption{Overhead of \sysname's memory sanitization with register savings
+	turned on or off.}
+\label{slowregisters}
 \end{table}
+
+
+\subsection{Comparison to trampolines}
+
+Trampolines are one of the most straight-forward way to instrument a binary, and they are
+are free from the burden of static analysis required to perform symbolization. However, we
+would like to show that the tradeoff in performance is very large compared to the in-place
+instrumenation that symbolization permits to do. 
+
+We implemented the same memory sanitization instrumentation pass by using
+trampolines, and ran the benchmarks with it to compare the timings. Results can
+be seen in \autoref{slowtrampolines}. 
+
+This was a fairly simple experiment that used only a single type of very heavy instrumenation
+(memory sanitization adds a lot of branches in the code and a very large number of 
+instructions need to be instrumented), but the difference in overhead is very large, with
+trampolines being 56\% slower on average compared to symbolized in-place instrumentation. 
+We expect lower differences in overhead when using lighter forms of instrumentation, but not
+enough lower to avoid being noticeable. 
+
+
 
 \begin{table}
 \centering
@@ -1634,6 +1711,9 @@ and the original benchmarks compiled with source based ASAN.
 \label{slowtrampolines}
 \end{table}
 
+
+
+
 \section{Correctness}
 
 While the SPEC CPU benchmark checks the validity of the output of each benchmark
@@ -1656,6 +1736,8 @@ because of the overhead of the instrumentation that triggers a timeout in the
 tests.
 
 
+
+
 \begin{table}
 \centering
 \begin{tabular}{lrr}
@@ -1671,6 +1753,30 @@ tests.
 \caption{Results of the coreutils ``very expensive'' test suite on binaries rewritten through \sysname, comparing memory sanitization enabled or disabled. The skipped tests are due to uninstalled third-party dependencies, or architecture specific features missing on the Raspberry.}
 \label{coreutils}
 \end{table}
+
+
+
+\section{Comparison with Egalito}
+The only state-of-the-art rewriter engine that had features comparable to
+\sysname is Egalito~\cite{egalito}. Egalito is a binary ``recompiler'' targeted
+at C, position-independent Linux executables that lifts binary to a custom
+Intermediate Representation (IR) and supports a large variety of
+instrumentation and transformation passes, and has a (reported) similar
+baseline overhead to \sysname (0.46\% on SPEC CPU2006). The comparison with
+Egalito is interesting because the authors had to tackle very similar problems
+as ours (pointer construction and jump table recovery); however, they do not
+address how they solved the problem of jump table enlargement in the case of
+heavyweight instrumentation.  Unfortunately, we were not able to perform any
+kind of comparison as the latest version available in the public repository
+crashes on any \texttt{aarch64} binary we tried to recompile. We opened an
+issue \footnote{\url{https://github.com/columbia/egalito/issues/32}} on their
+public Github repository on November 28, 2020, but it still left unanswered.
+
+
+
+\todo{Do we want to talk about cache misses? I already have scripts to measure them, I just need to 
+run all the benchmarks all over again}
+\mat{If you have them sure, but as lower priority. Nice to have but not a must.}
 
 
 
