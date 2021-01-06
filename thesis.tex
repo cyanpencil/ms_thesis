@@ -63,6 +63,7 @@
 
 \linespread{1.5} 
 \newcommand{\sysname}{RetroWrite\_ARM\xspace}
+\newcommand{\sysnameold}{RetroWrite\_x64\xspace}
 
 %\newcommand{\todo}[1]{\colorbox{cyan}{\parbox{0.9\textwidth}{#1}}}
 %\newcommand{\todo}[1]{%
@@ -170,7 +171,7 @@
 	\sysname, a \emph{zero-overhead} static binary rewriter for \texttt{aarch64}
 	executables that solves key challenges such as pointer construction
 	detection and jump table instrumentation, based on 
-	the RetroWrite\_x64 project.
+	the \sysnameold project.
 
 	Our proof of work implementation of a memory sanitizer instrumentation
 	pass has the same functionality of the source-based counterpart, and our
@@ -216,22 +217,37 @@ challenging as vendors often release components as binary-only, i.e., without
 accompanying source code.  Binaries cannot be readily evaluated by security
 analysts, resulting in potentially undiscovered vulnerabilities in this
 binary-only modules, which often run with high privileges and are exposed to
-the network.  Binary rewriting allows analysts to work with binary-only modules
-but existing solutions are faced with severe disadvantages of either high
-overhead for dynamic rewriting and limited rewriting capabilities for static
-solutions.
+the network. Binary rewriting is a process that allows insertion of arbitrary code
+(instrumentation) in an already compiled binary without the need to recover its
+source code, allowing the insertion of hardening measures that are able to 
+substantially reduce the exploitability in the case of a vulnerability.
+Binary rewriting is also vital to analysts looking for new vulnerabilities,
+as it's an important step in the fuzzing of closed source software. 
+
+Binary rewriters can be split into two main categories: \emph{dynamic} rewriters
+, that inject code into the target executable at run-time, and \emph{static} ones
+, that transform the executable into a new one with the instrumentation already inserted.
+The first kind allow more flexibility, and support a broader range of binaries, but
+they insert noticeable overhead during its execution; the static ones instead have a much
+smaller footprint in execution time but are only applicable on binaries on which the analysis
+without runtime information (static analysis) is successful.
+
+%Binary rewriting allows analysts to work with binary-only modules
+%but existing solutions are faced with severe disadvantages of either high
+%overhead for dynamic rewriting and limited rewriting capabilities for static
+%solutions.
 
 While there is no shortage of \emph{static} rewriters targeted towards the
 \texttt{x86} architecture, only a few support \texttt{ARM}. In fact, \texttt{ARM} binaries
 require a very different kind of static analysis than \texttt{x86}, and present
-many challenges that were not present before. Those challenges derive from the
+many challenges that are not found on \texttt{x86}. Those challenges derive from the
 fact that the \texttt{ARM} ISA is fixed-size, and all instructions occupy exactly
 4 bytes. Since addresses in the 64 bit space are 8-byte long, they do not fit 
 into a single instruction, and executables must ``craft'' addresses in various
 ways (storing them in memory at compile time, or using arithmetic expressions to 
 construct them). A number of static analysis techniques commonly used on \texttt{x86}
 are not usable anymore on \texttt{ARM} for this very reason.
-There are a number of \emph{dynamic} rewriters that support \texttt{ARM}, as
+There are a number of \emph{dynamic} rewriters that support \texttt{ARM}, and
 they work by running together with the binary to instrument and modifying
 it in real time: this allows them to use powerful dynamic analysis techniques to 
 recover more information about the binary, but as a side effect they introduce
@@ -239,7 +255,7 @@ very large overhead even with very light instrumentation.
 
 Introducing only a small overhead onto an instrumented binary is a very desirable feature to 
 have into a binary rewriter, as nowadays the largest use case of binary instrumentation
-is the introduction of fuzzing hooks and memory sanitization checks in a closed 
+is the injection of fuzzing hooks and memory sanitization checks in a closed 
 source binary to drastically improve the efficiency of modern fuzzing
 engines. Using a static binary rewriter versus a dynamic one can when
 fuzzing can lead to an order of magnitude more executions per second. 
@@ -267,7 +283,7 @@ executable.
 
 In this thesis we would like to introduce \sysname, a new, advanced static rewriter 
 for \texttt{ARM64} binaries that builds on the original RetroWrite (from now on
-referred as RetroWrite\_x64) and uses the same \emph{symbolization} technique 
+referred as \sysnameold) and uses the same \emph{symbolization} technique 
 to allow the development of complex and efficient instrumentation and trasformation
 of closed-source binaries. Our work focuses on the development of novel approaches
 to tackle the static analysis challenges presented by \texttt{ARM} executables 
@@ -373,12 +389,66 @@ support to the ARM architecture.
 
 \section{Binary Rewriting}
 \emph{Binary rewriting} describes the alteration of a compiled program without 
-having the source code at hand in such a way that the binary under 
-investigation keeps the same functionality. 
-Usually binary rewriting is used when there is the need to apply a specific compiler
-pass or code transformation to an executable without the possession of its source code.
+possessing its source code in such a way that the binary under 
+investigation keeps the same functionality.
+
+At first, binary rewriting was used to change parts of a program during execution
+(run-time patching, with the first applications dating back to the 60s~\cite{miller2006binary})
+but today it evolved into a stable and researched field of computer science, with 
+a number of applications ranging from security to software optimization.
 
 
+\subsection{Binary rewriting in short}
+To better explain how does a rewriting algorithm work, we can summarize
+its process into four main steps:
+\begin{itemize}
+	\item \emph{Parsing}: Executables are complex formats and are often optimized
+		for speed instead of readability. Separating code, data and metadata in 
+		an executable format is not easy as often all three kinds of information
+		are scattered through the file in different ways. Furthermore, data is often
+		\emph{untyped} (there is no type information on global variables), and the
+		boundary between code and data is not always clearly defined as in many 
+		architectures instructions can have variable width. Finally, recovering 
+		and distinguishing references (pointers) from scalars (constants) is 
+		a problem which was only recently solved on position-independent 
+		executables~\cite{dinesh20oakland}. The purpose of this step is to 
+		parse the input file and separate information between code and data into 
+		clearly defined structures ready to be analyzed in the next step. 
+	\item \emph{Analysis}: This step focuses on the code of the executable, and on 
+		the recovery of as much information as possible from the raw instructions present
+		in the code sections of the executable. Usually this involves disassembling
+		the raw instructions to be able to analyze them individually, the study of the
+		structure of the code to split it into functions, and the analysis of the branches
+		of each functions to build the control flow graph (CFG) of each one. Often times
+		this step also involves the computation of all cross-references (list of pointers
+		to a specific address). At the end of this step the rewriter should have a very
+		precise representation of the executable in a convenient data structure that 
+		allows fast answers to queries such as listing all the call sites of a specific
+		function.
+	\item \emph{Transformation}: With all the information gathered from the analysis, now
+		the rewriter must identify all the instrumentation locations in which code has to
+		be altered/injected. For example, in the case of a memory sanitization instrumentation
+		pass, the code must locate all memory stores and all memory loads and mark them
+		for insertion of snippets of code that check if the target memory region lies inside
+		an uncorrupted heap chunk.
+	\item \emph{Code generation}: The rewriter now has to make sure that the
+		inserted instrumentation does not break the intended functionality of
+		the original executable, and then patch it or generate a new executable
+		from scratch. There are multiple ways to achieve this step, the most
+		common ones being using trampolines (creating a section with the new
+		code in the target binary, and then inserting branches at
+		instrumentation locations to make the new code reachable), in-place
+		instrumentation (generation of a new executable with the new
+		instructions already inserted at each instrumentation locations, with
+		all the code and data references adjusted to make place for the new
+		code), or run-time patching.
+\end{itemize}
+
+%Usually binary rewriting is used when there is the need to apply a specific compiler
+%pass or code transformation to an executable without the possession of its source code.
+
+
+\subsection{Applications of binary rewriting}
 
 The applications of binary 
 rewriting are multiple and can be summarized as follows:
@@ -388,43 +458,59 @@ rewriting are multiple and can be summarized as follows:
 		different device. Emulators use binary rewriting to translate system
 		calls, instructions, memory access and all the other execution
 		primitives from one processor architecture to another.  An example of
-		this would be QEMU \cite{qemu}.
+		this would be QEMU~\cite{qemu}.
 
 	\item \textbf{Optimization}: In high performance computing domains, having 
 		a way to patch subtle things like cache misses or timing anomalies in 
 		very long running tasks without the need to restart the whole program 
 		is of special interest. In such situations, binary rewriting is a 
-		solution for run-time patching, as it is done by DynInst \cite{dyninst} 
-		or Frida \footnote{\url{https://frida.re/}}
+		solution for run-time patching, as it is done by DynInst~\cite{dyninst} 
+		or Frida~\cite{frida}.
 
 	\item \textbf{Profiling}: Having an in-depth look during the execution of 
 		a binary by inserting profiling or tracing instructions in the middle 
 		of its code can prove to be particularly useful in many applications, 
-		like catching memory leaks (e.g., Valgrind \cite{valgrind}), coverage 
-		information for fuzzing (e.g., AFL-QEMU \cite{afl}) and more.
+		like catching memory leaks (e.g., Valgrind~\cite{valgrind}), coverage 
+		information for fuzzing (e.g., AFL-QEMU~\cite{afl}) and more.
 
-	\item \textbf{Hardening}: The absence of source code, combined with no 
+	\item \textbf{Hardening}: This is by far the most widespread use case of
+		binary rewriting, as many times we are forced to use software with the
+		absence of source code, with no vendor support, or with deprecated build
+		tools that make recompilation with hardening passes enabled impossible. 
+		Binary rewriting can be used to apply security measures such as adding
+		stack canaries, implementing address layout randomization schemes and
+		memory sanitization to make exploitation substantially harder. Closed
+		source software and lack of vendor support is so widespread that there
+		are already many binary rewriting tools on \texttt{x86} that are mainly
+		aimed at hardening executables. Examples of such software are
+		Stackguard~\cite{stackguard} (that supports the insertion of stack canaries) 
+		or \sysnameold~\cite{dinesh20oakland} (that implements a memory sanitization
+		pass to prevent heap corruptions). 
+
+
+		The absence of source code, combined with no 
 		vendor support, or deprecated build tools, could make the use of binary 
 		rewriting necessary to introduce security measures such as the 
-		insertion of stack canaries (e.g., Stackguard \cite{stackguard}) or 
-		memory sanitization (e.g., \sysname \cite{dinesh20oakland}).
+		insertion of stack canaries (e.g., Stackguard~\cite{stackguard}) or 
+		memory sanitization (e.g., \sysname64~\cite{dinesh20oakland}).
 	
 \end{itemize}
 
-Instrumenting a binary is not an easy task, as it is often said that binaries 
-have a \emph{rigid} structure, because moving any data or code, or inserting 
-instructions, will break all the references inside said binary. Thus, a binary 
-rewriter must make sure that all the pointers and control flow broken by the 
-inserted instrumentation are corrected.
+%Instrumenting a binary is not an easy task, as it is often said that binaries 
+%have a \emph{rigid} structure, because moving any data or code, or inserting 
+%instructions, will break all the references inside said binary. Thus, a binary 
+%rewriter must make sure that all the pointers and control flow broken by the 
+%inserted instrumentation are corrected.
 
-In the next section we will analyze the difference between the two different 
-approaches that can be taken for binary rewriting, namely \emph{dynamic} and 
-\emph{static} instrumentation.
 
 
 
 
 \section{Dynamic and Static Instrumentation}
+
+In this section we will analyze the difference between the two different 
+approaches that can be taken for binary rewriting, namely \emph{dynamic} and 
+\emph{static} instrumentation.
 
 \subsection{Dynamic instrumentation} Dynamic rewriters modify and instrument
 the code of the target binary during runtime. Usually, the target binary is
@@ -442,13 +528,13 @@ Furthermore, dynamic rewriters can avoid analyzing the whole binary at once, as
 they can just focus on the part that is being currently executed, making them 
 scalable to arbitrarily large programs.
 
-However, the additional runtime information comes at a high performance cost: 
-running the rewriter engine alongside the target binary is expensive, and 
-furthermore the frequent context switches the CPU must do to execute both make 
-the situation even worse. The total overhead for an instrumentation pass like 
-memory sanitization for a state-of-the-art dynamic rewriter like Valgrind are 
-in the order of 10x~\cite{dinesh20oakland} the overhead introduced by 
-source-level memory sanitization.
+However, the additional runtime information comes at a high performance cost:
+running the rewriter engine alongside the target binary is expensive, and the
+frequent context switches the CPU must perform to execute both processes make
+the performance even worse. The total overhead for an instrumentation pass like
+memory sanitization for a state-of-the-art dynamic rewriter like Valgrind is an
+order of magnitude higher ~\cite{dinesh20oakland} than the overhead introduced
+by source-level memory sanitization.
 
 \subsection{Static instrumentation}
 Static rewriters process the target binary \emph{before} execution, and produce 
@@ -476,6 +562,29 @@ labels, that are more flexible and can be parsed by any generic off-the-shelf
 assembler.  \sysname's approach is particularly interesting in the fact that it 
 avoid heuristics to differentiate between scalars and references by focusing on 
 position-independent executables (PIE). 
+
+
+\section{Symbolization}
+
+The \emph{symbolization} technique is a special form of code generation that focuses
+on the output of \emph{reassemblable} assembly that can be directly fed to 
+a generic assembler to produce the instrumented executable. 
+
+Symbolization works by transforming all reference constants in the executable
+(both in the code and data sections, including relative branches) with assembly
+labels, in such a way that pointers and control flow will resolve correctly even
+after new instructions are inserted in the middle of the code. The usefulness of
+symbolization relies in the fact that many existing tools can be applied to 
+insert instrumentation or analyze the symbolized assembly. 
+
+The symbolization approach is usually defined \emph{zero-overhead}, 
+as the generated executable does not incur in more overhead other than
+the time it takes to execute the instrumentation inserted (unlike other methods, like
+trampolines, where for each instrumentation location two additional branches need to
+be executed).
+
+Originally, symbolization was introduced by Uroboros~\cite{uroboros}, and was later used
+by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 
 
 
@@ -635,12 +744,12 @@ avoid limiting any kind of instrumentation.
 \caption{Overview of the structure of \sysname}
 \end{figure}
 
-\sysname is divided into two main components: the symbolizer and the 
-instrumentation.  The symbolizer takes care of loading and analyzing a binary, 
-but its main job is substituting every reference in the target with assembly 
-labels, plus some minor tasks to keep the original functionality of the binary 
-intact. 
-Listing \ref{diffass}  shows the output of the symbolization process on a
+\sysname follows the same structure as \sysnameold and is divided into two main
+components: the symbolizer and the instrumentation.  The symbolizer takes care
+of loading and analyzing a binary, but its main job is substituting every
+reference in the target with assembly labels, plus some minor tasks to keep the
+original functionality of the binary intact. 
+Listing~\ref{diffass}  shows the output of the symbolization process on a
 small example assembly snippet.
 
 One or more instrumentation passes can be enabled to apply 
@@ -677,6 +786,15 @@ implemented (BASan), but many more can be easily added.
 \label{diffass}
 \end{figure}
 
+
+\subsection{Differences with \sysnameold}
+
+\sysname uses the same approach for the parsing of the executables, although
+with different implementation details to support the \texttt{ARM} architecture (e.g., relocations). The technique to differentiate between references and scalars introduced in \sysnameold is also the same. 
+
+Since this document focuses on the new challenges that the \texttt{ARM} architecture introduced, we will not go into details about the above algorithms, and point the reader to the original \sysnameold paper~\cite{dinesh20oakland} for further reference. 
+
+The novelty in \sysname relies in the additional static analysis methods that we had to develop to support detection of pointer constructions and jump tables. To the best of our knowledge, our work is the first attempt to generate symbolized enlarged jump tables and symbolized pointer constructions. In the next section we will go into detail about the above challenges and how did we solve them.
 
 
 \section{Key Issues}
@@ -908,7 +1026,7 @@ which is a very desirable property in binary rewriting.
 \subsection{Control Flow broken by instrumentation}
 When adding substantial amount of instrumentation to a binary, some pc-relative 
 branches can break, like the instruction \texttt{cbz}, which cannot jump to 
-addresses farther than 1MB. 
+addresses farther than 1MB\@. 
 
 In this cases we fix the relevant instruction by making them point to a some 
 additional instrumentation containing a trampoline to the original target of 
