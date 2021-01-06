@@ -388,14 +388,18 @@ underlying concepts behind \sysname and the problems we faced while developing
 support to the ARM architecture. 
 
 \section{Binary Rewriting}
-\emph{Binary rewriting} describes the alteration of a compiled program without 
-possessing its source code in such a way that the binary under 
-investigation keeps the same functionality.
+\emph{Binary rewriting} describes the alteration of a compiled program such a
+way that the binary under investigation remains executable. It is useful
+in the case some additional functionality needs to be added to a closed-source
+binary, or to perform live changes on an already running executable.
+At first, binary rewriting was considered a ``hack''  to change parts of a
+program during execution (run-time patching, with the first uses dating back to
+the 60s on the PDP-11~\cite{miller2006binary}) but today it evolved into a stable and
+researched field of computer science, with a number of applications ranging
+from security to software optimization.
 
-At first, binary rewriting was used to change parts of a program during execution
-(run-time patching, with the first applications dating back to the 60s~\cite{miller2006binary})
-but today it evolved into a stable and researched field of computer science, with 
-a number of applications ranging from security to software optimization.
+In the next subsection we will briefly explain how it works, and then we will
+present the most common applications of binary rewriting. 
 
 
 \subsection{Binary rewriting in short}
@@ -444,6 +448,34 @@ its process into four main steps:
 		code), or run-time patching.
 \end{itemize}
 
+The last two steps, ``transformation'' and ``code generation'' are where most of the
+research in binary rewriting is done. We will shortly list the most prominent
+techniques that rewriters use to perform those latest two steps:
+\begin{itemize}
+	\item Trampolines: All new instrumentation code is put into a new section in the binary.
+		At every instrumentation point, the rewriter changes an instruction with a branch
+		that redirects execution to the right location inside the instrumentation section. 
+		At the end of the instrumentation, there is always a branch that leads back to 
+		the old location in the executable. This is one of the simplest methods as it does
+		not break any references inside the executable.
+	\item Direct: At each instrumentation point, code is either overwritten or shifted to 
+		make space for the instrumentation to insert. In the case of a shift, all references
+		must be readjusted to match the displacement of the code.
+	\item Lifting: This approach involves lifting the binary code to an Intermediate
+		Representation (IR) language similar to the one used in compilers such as LLVM.
+		The translation to IR is performed as it usually is a simpler language on which
+		it is easier to apply instrumentation to. At the end of the process the IR is 
+		translated back to binary code and a new instrumented executable is generated.
+	\item Symbolization: The process of transforming a binary into a \emph{reassemblable}
+		assembly listing and applying instrumentation on it. Since this is
+		the method used by \sysname, we will go into the details of how it works in 
+		the next section.
+\end{itemize}
+
+
+A more comprehensive report of all the different techniques can be found in a recent survey about binary rewriting~\cite{miller2006binary}.
+
+
 %Usually binary rewriting is used when there is the need to apply a specific compiler
 %pass or code transformation to an executable without the possession of its source code.
 
@@ -476,7 +508,7 @@ rewriting are multiple and can be summarized as follows:
 	\item \textbf{Hardening}: This is by far the most widespread use case of
 		binary rewriting, as many times we are forced to use software with the
 		absence of source code, with no vendor support, or with deprecated build
-		tools that make recompilation with hardening passes enabled impossible. 
+		tools that make recompilation impossible. 
 		Binary rewriting can be used to apply security measures such as adding
 		stack canaries, implementing address layout randomization schemes and
 		memory sanitization to make exploitation substantially harder. Closed
@@ -537,38 +569,38 @@ order of magnitude higher ~\cite{dinesh20oakland} than the overhead introduced
 by source-level memory sanitization.
 
 \subsection{Static instrumentation}
-Static rewriters process the target binary \emph{before} execution, and produce 
-as output a new binary with all the required instrumentation already there.  
-This approach nets a big advantage in the fact that, except in some rare cases, 
-very low overhead is introduced, and execution speed is comparable to 
-compile-time instrumentation. Furthermore, static rewriters are able to add 
-complex instrumentation that is computationally expensive to introduce, as 
-since it is done statically, it won't introduce unnecessary delays at runtime.
+Static rewriters process the target binary \emph{before} execution, and produce
+as output a new binary with all the required instrumentation already there.
+The overhead introduced is usually very low, and execution speeds are
+comparable to compile-time instrumentation.  Furthermore, static rewriters are
+able to add complex instrumentation that is computationally expensive to
+introduce, as since it is done statically, it won't introduce unnecessary
+delays at runtime.
 
-Without runtime information, to correctly perform instrumentation static 
-rewriters need to rely on complex analysis, which is inherently imprecise and 
-often falls back on heuristics. It turns out that the common disadvantage of 
-static rewriters is that they do not scale well on bigger binaries, or binaries 
-that do not follow standard patterns. In fact, virtually no static rewriter 
-supports packed binaries or self-modifying code. Moreover, many rewriters 
-struggle with binaries produced by deprecated compilers or with aggressive 
-optimization flags. 
+Without runtime information, to correctly perform instrumentation static
+rewriters need to rely on complex static analysis, which is inherently
+imprecise and often needs to rely on heuristics. It turns out that the common
+disadvantage of static rewriters is that they do not scale well on large
+binaries or binaries that do not follow standard patterns. In fact, virtually
+no static rewriter supports packed binaries or self-modifying code, as they are
+too complex to statically analyze. Moreover, many static rewriters struggle even with
+binaries produced by deprecated compilers or with aggressive optimization
+flags.
 
-More recent static rewriters such as Ramblr~\cite{ramblr}, 
-Uroboros~\cite{uroboros}, and \sysname rely on \emph{symbolization} (sometimes 
-also called \emph{reassemblable assembly}), which work around the rigid 
-structure of binaries by substituting hard coded references with assembly 
-labels, that are more flexible and can be parsed by any generic off-the-shelf 
-assembler.  \sysname's approach is particularly interesting in the fact that it 
-avoid heuristics to differentiate between scalars and references by focusing on 
-position-independent executables (PIE). 
+More recent static rewriters such as Ramblr~\cite{ramblr},
+Uroboros~\cite{uroboros}, and \sysnameold rely on \emph{symbolization}, which
+works around the rigid structure of binaries by substituting hard coded
+references with assembly labels.  \sysnameold's approach is particularly
+interesting in the fact that it avoid heuristics to differentiate between
+scalars and references by focusing on position-independent executables (PIE). 
 
 
 \section{Symbolization}
 
 The \emph{symbolization} technique is a special form of code generation that focuses
 on the output of \emph{reassemblable} assembly that can be directly fed to 
-a generic assembler to produce the instrumented executable. 
+a generic assembler to produce the instrumented executable. An example of this process
+can be found in Listing~\ref{diffass}.
 
 Symbolization works by transforming all reference constants in the executable
 (both in the code and data sections, including relative branches) with assembly
@@ -586,10 +618,36 @@ be executed).
 Originally, symbolization was introduced by Uroboros~\cite{uroboros}, and was later used
 by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 
+\begin{figure}[h]
+\begin{minipage}{.45\textwidth}
+
+\begin{lstlisting}
+0x400: adr  x0, 0xab0000
+0x404: cmp  x1, 20
+0x408: b.eq 4
+0x40c: ret
+0x410: ret
+\end{lstlisting}
+
+\end{minipage}\hfill
+\begin{minipage}{.45\textwidth}
+
+\begin{lstlisting}
+.LC400: adr  x0, .LCab0000
+.LC404: cmp  x1, 20
+.LC408: b.eq .LC410
+.LC40c: ret
+.LC410: ret
+\end{lstlisting}
+
+\end{minipage}
+\captionof{lstlisting}{Assembly in the original binary (left), and after symbolization (right)}
+\label{diffass}
+\end{figure}
 
 
 \section{Examples of code instrumentation}
-In this section we will go into more detail on our particular use-case of 
+In this section we will go into more detail on a very common use-case of 
 instrumentation, \emph{fuzzing}, and explain what is the basis of 
 AdressSanitizer, the instrumentation pass we implemented in the ARM port of 
 \sysname. 
@@ -597,7 +655,7 @@ AdressSanitizer, the instrumentation pass we implemented in the ARM port of
 \subsection{Fuzzing}
 Automatic vulnerability discovery techniques are getting a lot of traction 
 lately, mostly because software is getting ever more complex and large, and 
-manual analysis and auditing does not scale very well. Fuzzing is certainly one 
+manual analysis and auditing do not scale. Fuzzing is certainly one 
 of the most interesting automatic vulnerability discovery techniques.  It 
 relies on the pseudo-random generation of test cases to give as input to a 
 target binary, trying to find a specific input that makes the binary get into 
@@ -610,14 +668,27 @@ fuzzer used to efficiently test APIs thanks to its innovative \emph{persistent
 fuzzing} feature.
 
 Most state-of-the-art fuzzers rely on instrumentation to improve vulnerability 
-discovery, as it makes the fuzzing process much more efficient. A fuzzer that 
-focuses on binaries for which no instrumentation is available is commonly 
-called a \emph{black-box fuzzer}. 
+discovery, as it makes the fuzzing process much more efficient. In particular,
+some of the most popular instrumentation passes to speed up fuzzing are the following:
+\begin{itemize}
+	\item \emph{Coverage information}: Coverage information helps the fuzzing engine
+		by monitoring the execution path taken for each input test case. In this way,
+		the fuzzing engine can generate inputs with the aim of maximizing the amount
+		of code executed by each test case, increasing the probability of finding bugs.
+		Coverage information is commonly obtained by inserting monitoring instrumentation
+		at the start of each function or at before each branch instruction.
+	\item \emph{Memory Sanitization}: This instrumentation
+		pass adds a check before each instruction that reads or writes to memory
+		to verify that the memory access does not result in a stack or heap overflow. 
+		Originally developed to debug memory corruption errors, memory sanitization
+		has seen widespread use in fuzzing engines as it can halt execution and
+		report an error as soon as a memory corruption is detected.
+\end{itemize}
 
 \subsection{ASan}
 \emph{AddressSanitizer}, or ASan in short, is one of the most common static 
 memory sanitization checks that can be added to a binary through a compiler 
-pass, implemented in both the \texttt{clang} and \texttt{gcc} family of 
+pass, which can be found in both the \texttt{clang} and \texttt{gcc} family of 
 compilers. This compiler pass helps finding bugs by actively checking for 
 memory corruptions, hooking calls to libc's  \texttt{free} and \texttt{malloc} 
 functions. ASan is not only used by developers to debug their code before 
@@ -758,33 +829,6 @@ implemented (BASan), but many more can be easily added.
 
 
 
-\begin{figure}[h]
-\begin{minipage}{.45\textwidth}
-
-\begin{lstlisting}
-0x400: adr  x0, 0xab0000
-0x404: cmp  x1, 20
-0x408: b.eq 4
-0x40c: ret
-0x410: ret
-\end{lstlisting}
-
-
-\end{minipage}\hfill
-\begin{minipage}{.45\textwidth}
-
-\begin{lstlisting}
-.LC400: adr  x0, .LCab0000
-.LC404: cmp  x1, 20
-.LC408: b.eq .LC410
-.LC40c: ret
-.LC410: ret
-\end{lstlisting}
-
-\end{minipage}
-\captionof{lstlisting}{Assembly in the original binary (left), and after symbolization (right)}
-\label{diffass}
-\end{figure}
 
 
 \subsection{Differences with \sysnameold}
