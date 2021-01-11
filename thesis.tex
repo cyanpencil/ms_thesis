@@ -105,6 +105,7 @@
 
 \definecolor{lgray}{rgb}{0.92,0.92,0.92}
 \definecolor{dgray}{rgb}{0.46,0.46,0.46}
+\definecolor{dblue}{rgb}{0.15,0.4,0.15}
 
 \lstset{ %
   language=[x86masm]Assembler,    
@@ -116,6 +117,7 @@
   numberstyle=\small\color{gray},  
   numbersep=15pt,
   stepnumber=1,                   
+  %backgroundcolor=\color{lgray},  
   backgroundcolor=\color{lgray},  
   tabsize=4,                      
   captionpos=b,                   
@@ -123,11 +125,15 @@
   breakatwhitespace=false,      
   title=\lstname,              
   keywordstyle=\color{blue},     
+  keywordstyle=[2]\color{dblue},     
+  keywordstyle=[3]\color{purple},     
   commentstyle=\color{dgray}, 
   stringstyle=\color{mauve},   
   escapeinside={\%*}{*)},     
   columns=fullflexible,
-  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, b.hi, ldr, movz}
+  morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, b.hi, ldr, movz, ldp, msr, mrs, stp,lsr, ldrsb, ldrsh, cbz},
+  morekeywords=[2]{.byte,lo12},
+  morekeywords=[3]{x0,x1,x2,x3,x4,x5,x6,x7,x8,x9,x10,x11,x12,x13,x14,x15,x16,x17, w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,w11,w12,w13,w14,w15,w16,w17,sp,nzcv}
 }
 
 %\title{Arm Wrestling: efficient binary rewriting on ARM}
@@ -255,7 +261,7 @@ up with my constant complaining. Thanks!
 	Our proof of work implementation of a memory sanitizer instrumentation
 	pass has the same functionality of the source-based counterpart, and our
 	benchmarks show that it is \todo{xx\%} faster than Valgrind's \texttt{memcheck}.
-\mat{Make XX a macro and use it throughout when you refer to that number.}
+%\mat{Make XX a macro and use it throughout when you refer to that number.}
 
 \end{abstract}
 
@@ -706,7 +712,7 @@ by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 \centerfloat
 \begin{minipage}{.55\textwidth}
 
-\begin{lstlisting}
+\begin{lstlisting}[belowskip=-2em]
 0x400: adr  x0, 0xab0000
 0x404: cmp  x1, 20
 0x408: b.eq 4
@@ -717,7 +723,7 @@ by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 \end{minipage}\hspace{1cm}
 \begin{minipage}{.55\textwidth}
 
-\begin{lstlisting}
+\begin{lstlisting}[belowskip=-2em]
 .LC400: adr  x0, .LCab0000
 .LC404: cmp  x1, 20
 .LC408: b.eq .LC410
@@ -1191,7 +1197,7 @@ original functionality of the binary.
 
 %This section is usually 3-5 pages.
 
-In this chapter we cover the implementation of the rewriter, and of bASAN, the memory
+In this chapter we cover the implementation of the rewriter, and of BASan, the memory
 sanitization instrumentation pass. We will also share details on the optimizations
 we implemented to minimize instrumentation overhead.
 
@@ -1201,7 +1207,7 @@ we implemented to minimize instrumentation overhead.
 Symbolization requires detection of every single pointer and control flow
 mechanism in the binary. In \texttt{aarch64}, this may prove to be harder than
 it looks, as in fact pointer construction patterns are difficult to recover
-and jump tables are not as friendly as they are in x86. 
+and jump tables are not as heuristics friendly as they are in x86. 
 In the following subsections we will go over each problem and explain our
 approach to tackle it. 
 
@@ -1222,9 +1228,9 @@ We implemented two different approaches and combined them together to
 successfully recover pointers in \texttt{aarch64} binaries.
 The first one is based on pattern matching. We first build a list of 
 possible pointer building locations, enumerating all instances of the \texttt{adrp} 
-instruction. Next, we tried to find all \texttt{add}, \texttt{ldr}, or 
-\texttt{str} instructions (or their variants) that used the register that was 
-partially built with the \texttt{adrp}, and tried to recover the original
+instruction. Next, we find all \texttt{add}, \texttt{ldr}, or 
+\texttt{str} instructions (or their variants) that use the register that was 
+partially built with the \texttt{adrp}, and try to recover the original
 pointer by emulating the arithmetics involved in those instructions.
 This approach alone was not enough because of the following 
 difficulties:
@@ -1246,14 +1252,14 @@ difficulties:
 \begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \texttt{adrp} instruction}]
 adrp x0, 0xab0000
 add  x1, x0, 256   ; pointer 0xab100
-ldr  x2, [x0, 512] // pointer 0xab200
-add  x0, x0, 128   // pointer 0xab080
+ldr  x2, [x0, 512] ; pointer 0xab200
+add  x0, x0, 128   ; pointer 0xab080
 \end{lstlisting}
 \begin{lstlisting}[float,floatplacement=H,label=pointers2,caption={Example of changing register during
 pointer construction}]
 adrp x0, 0xab0000
 mov  x1, x0
-add  x1, x1, 256   // pointer 0xab100
+add  x1, x1, 256   ; pointer 0xab100
 \end{lstlisting}
 \begin{lstlisting}[float,floatplacement=H,label=pointers3,caption={Example of base page register stack
 saving}]
@@ -1261,29 +1267,28 @@ adrp x0, 0xab0000
 str  x0, [sp, -16!]
 ...
 ldr  x3, [sp, 16!]
-add  x3, x3, 512   // pointer 0xab200
+add  x3, x3, 512   ; pointer 0xab200
 \end{lstlisting}
 
 
-We implemented a light data flow recovery algorithm
-that statically analyzed the control flow and the stack usage of a given
-function, following around the register used for the \texttt{adrp} and checking
-for its usage, to address all the difficulties stated above. However, it is
-particularly hard to support every single edge case, and missing a single
-pointer symbolization is fatal and will cause a crash when the pointer is 
-dereferenced (which sometimes happens a while after the pointer is built, 
-and can be very time consuming to detect and debug). 
-While this pattern matching approach alone worked with the vast majority of
-pointer construction, it was insufficient to completely symbolize all pointers
-and failed on large binaries. 
+We implemented a light data flow recovery algorithm that statically analyzed
+the control flow and the stack usage of a given function, following around the
+register used for the \texttt{adrp} and checking for its usage, to address all
+the difficulties stated above. However, it is particularly hard to support
+every single edge case, and missing a single pointer symbolization is fatal and
+will cause a crash when the pointer is dereferenced (which sometimes happens a
+while after the pointer is built, and can be very time consuming to detect and
+debug).  While this pattern matching approach alone worked with the vast
+majority of instances of pointer construction, it was insufficient to
+completely symbolize all pointers and failed on large binaries. 
 
 Our second approach took advantage of the fact that \sysname does not 
 instrument data sections, and the vast majority of global variables point to
-those. Instead of trying to parse the pointer building patterns, we try to
+a data section. Instead of trying to parse the pointer building patterns, we try to
 guess which section of the original binary an \texttt{adrp} could be pointing
 to. Since the \texttt{adrp} loads a base page, and a page offset is added, the
-sections that can be addressed by a single pointer constructions are those that
-overlap the \texttt{adrp} address $\pm$ 1 KB.\@ Since all sections except
+sections that can be addressed by a single pointer construction are those that
+overlap the \texttt{adrp} address with a $\pm$ 1 KB range.\@ Since all sections except
 \texttt{.text} are not instrumented, if we are able to narrow down the possible
 target of a pointer construction to a single section, we can symbolize the
 pointer by just adjusting the starting 
@@ -1322,7 +1327,7 @@ being able to store a pointer in a single instruction.
 
 The \texttt{ARM} assembly specification~\cite{literalpoolsarm} states that the
 assembler will store a pointer in a literal pool when using the following
-construct: \texttt{ldr x0, =<pointer>}.  The \texttt{=<pointer>} part will be
+construct: \texttt{ldr x0, =<pointer>}.  This pseudo-instruction will be
 assembled with a pc-relative load to the nearest literal pool that contains the
 full pointer address.  The location of the literal pool must be manually
 specified in assembly through the \texttt{.ltorg} directive. Usually, literal
@@ -1354,16 +1359,16 @@ the offset inside a page).
 \begin{figure}[h]
 \label{lst:construction}
 \begin{minipage}{\textwidth}
-\begin{lstlisting}[]
+\begin{lstlisting}[belowskip=-1em]
 0x400: adrp  x0, 0xab000
-0x404: add x0, x0, 256              // pointer to 0xab100
+0x404: add x0, x0, 256              ; pointer to 0xab100
 \end{lstlisting}
 \end{minipage}
 
 \begin{minipage}{\textwidth}
-	\begin{lstlisting}[]
-.LC400: adrp  x0, .LCab100          // base page 
-.LC404: add x0, x0, :lo12:.LCab100  // page offset
+	\begin{lstlisting}[belowskip=-2em]
+.LC400: adrp  x0, .LCab100          ; base page 
+.LC404: add x0, x0, :lo12:.LCab100  ; page offset
 \end{lstlisting}
 \end{minipage}
 	\captionof{lstlisting}{Example pointer construction in the original binary
@@ -1376,38 +1381,38 @@ the offset inside a page).
 
 Switch statements in \texttt{ARM} binaries are stored as a table of offsets,
 instead of absolute addresses like in \texttt{x86}. This makes symbolizing them
-particularly tricky. First of all, detecting them is not easy. Listing
-\ref{omgjmptbl}shows how they do not have a particular pattern in memory. In
-this section we will go over what was our approach to finding them and how did
-we symbolize them without breaking their functionality.
+particularly tricky. First of all, detecting them is not easy:
+listing~\ref{omgjmptbl} shows how they do not have a particular pattern in
+memory. In this section we will go over what was our approach to finding them
+and how did we symbolize them without breaking their functionality.
 
 
 
 \begin{figure}[h]
 \centerfloat
 \begin{minipage}{.60\textwidth}
-\begin{lstlisting}[numbers=none]
+\begin{lstlisting}[belowskip=-2em]
 0x400: adrp x0, 0x8000
 0x404: add x0, x0, 3
 0x408: ldrb w1, [x0, w1, uxtw]
 0x40c: adr x0, 0x418
 0x410: add x0, x0, w1, sxtb 2
 0x414: br x0
-0x418: movz x0, 1   // case 0,1,2
+0x418: movz x0, 1   ; case 0,1,2
 0x41c: ret
-0x420: movz x0, 10  // case 3
+0x420: movz x0, 10  ; case 3
 0x424: ret
-0x428: movz x0, 100 // case 4
+0x428: movz x0, 100 ; case 4
 0x42c: ret
 \end{lstlisting}
 \end{minipage}\hspace{1cm}
 \begin{minipage}{.50\textwidth}
-\begin{lstlisting}[numbers=none]
-0x8003: byte 0x0   // case 0
-0x8004: byte 0x0   // case 1
-0x8005: byte 0x0   // case 2
-0x8006: byte 0x8   // case 3
-0x8007: byte 0x10  // case 4
+\begin{lstlisting}[belowskip=-2em]
+0x8003: .byte 0   ; case 0
+0x8004: .byte 0   ; case 1
+0x8005: .byte 0   ; case 2
+0x8006: .byte 8   ; case 3
+0x8007: .byte 16  ; case 4
 \end{lstlisting}
 \end{minipage}
 \captionof{lstlisting}{Left: code for a performing a switch. Register w1
@@ -1452,12 +1457,15 @@ often more nuanced and interleaved with other instructions).
 After we get the symbolic value of the indirect jump register, we compare it to
 the standard jump table expression, which is the following:
 
+\begin{minipage}{\textwidth}
+\centerfloat
 \texttt{base\_case\_addr + (*(jump\_table\_base\_addr + (register\_case\_number * ?)) \textless\.\textless\  ?)} 
+\end{minipage}
 
 The symbol \texttt{?} is a wildcard for any (positive) integer value.
 \texttt{base\_case\_addr} is the address of case 0 in the jump table.
 \texttt{jump\_table\_base\_addr} is instead the address in memory of the jump
-table offsets. Finally, \texttt{register\_case\_number} is a register with as
+table offsets. Lastly, \texttt{register\_case\_number} is a register with as
 value the number of the case that is going to be executed. 
 
 Finally, if the indirect call is recognized as a jump table, the last step is
@@ -1471,7 +1479,7 @@ the number of cases of the jump table based on the constant of the comparison.
 
 
 \begin{figure}[h]
-\begin{lstlisting}[numbers=none]
+\begin{lstlisting}[belowskip=-1em]
 0x3f8: cmp w1, 128
 0x3fc: b.hi .default_case
 0x400: adrp x0, 0x8000
@@ -1481,7 +1489,7 @@ the number of cases of the jump table based on the constant of the comparison.
 0x410: add x0, x0, w1, sxtb 2
 0x414: br x0
 \end{lstlisting}
-\begin{lstlisting}[numbers=none]
+\begin{lstlisting}[belowskip=-2em,language=python]
 Analyzing 0x414: br x0
 x0 = x0
 x0 = x0 + (w1 << 2)
@@ -1526,21 +1534,21 @@ amount of instrumentation.
 \begin{figure}[h]
 \centerfloat
 \begin{minipage}{.55\textwidth}
-\begin{lstlisting}[numbers=none]
-0x8003: byte 0x0   // case 0
-0x8004: byte 0x0   // case 1
-0x8005: byte 0x0   // case 2
-0x8006: byte 0x8   // case 3
-0x8007: byte 0x10  // case 4
+\begin{lstlisting}[belowskip=-2em]
+0x8003: .byte 0   ; case 0
+0x8004: .byte 0   ; case 1
+0x8005: .byte 0   ; case 2
+0x8006: .byte 8   ; case 3
+0x8007: .byte 16  ; case 4
 \end{lstlisting}
 \end{minipage}\hspace{1cm}
 \begin{minipage}{.59\textwidth}
-\begin{lstlisting}[numbers=none]
-0x8003: byte (.LC418 - .LC418) / 4
-0x8004: byte (.LC418 - .LC418) / 4
-0x8005: byte (.LC418 - .LC418) / 4
-0x8006: byte (.LC420 - .LC418) / 4
-0x8007: byte (.LC428 - .LC418) / 4
+\begin{lstlisting}[belowskip=-2em]
+0x8003: .byte (.LC418 - .LC418) / 4
+0x8004: .byte (.LC418 - .LC418) / 4
+0x8005: .byte (.LC418 - .LC418) / 4
+0x8006: .byte (.LC420 - .LC418) / 4
+0x8007: .byte (.LC428 - .LC418) / 4
 \end{lstlisting}
 \end{minipage} 
 \captionof{lstlisting}{Left: jump table as stored in memory as
@@ -1582,7 +1590,7 @@ up to 4, but we insert a standard \texttt{lsl} instruction before if it's higher
 An example of this can be found in Listing \ref{enlarged}.
 
 \begin{figure}[h]
-\begin{lstlisting}[numbers=none]
+\begin{lstlisting}[belowskip=-2em]
 .LC400: adrp x0, .LC8003
 .LC404: add x0, x0, :lo12:.LC8003
 .LC408: ldrb w1, [x0, w1, uxtw]
@@ -1590,21 +1598,21 @@ An example of this can be found in Listing \ref{enlarged}.
 .LC410: add x0, x0, w1, sxtb 4
 .LC414: br x0
 .align 4
-.LC418: movz x0, 1 // case 0,1,2
+.LC418: movz x0, 1   ; case 0,1,2
 .LC41c: ret
 .align 4
-.LC420: movz x0, 10 // case 3
+.LC420: movz x0, 10  ; case 3
 .LC424: ret
 .align 4
-.LC428: movz x0, 100 // case 4
+.LC428: movz x0, 100 ; case 4
 .LC42c: ret
 ...
 ...
-0x8003: byte (.LC418 - .LC418) / 16
-0x8004: byte (.LC418 - .LC418) / 16
-0x8005: byte (.LC418 - .LC418) / 16
-0x8006: byte (.LC420 - .LC418) / 16
-0x8007: byte (.LC428 - .LC418) / 16
+0x8003: .byte (.LC418 - .LC418) / 16
+0x8004: .byte (.LC418 - .LC418) / 16
+0x8005: .byte (.LC418 - .LC418) / 16
+0x8006: .byte (.LC420 - .LC418) / 16
+0x8007: .byte (.LC428 - .LC418) / 16
 \end{lstlisting}
 \captionof{lstlisting}{Example of enlarged symbolized jump table. The shift value at \texttt{0x410} is increased from 2 to 4, and the divisor at \texttt{0x8003} is increased from 4 to 16. Before each case, an \texttt{.align 4} assembly directive is inserted, as each of them need to be aligned to 16 bytes.}
 \label{enlarged}
@@ -1636,11 +1644,36 @@ implement it as an instrumentation pass, we manually wrote assembly code that
 matched its functionality and could be adapted to both reads and stores.  
 Different versions of ASan snippets were developed depending on the size of the 
 store/load, to ensure maximum efficiency and avoid wasting calculations at 
-runtime. An example of an instrumented instruction can be found in the listing 
-below:
+runtime. An example of an instrumented instruction can be found in \autoref{instrumentation}.
 
-\todo{Add comparison between non-instrumented and instrumented 8-byte load (the 
-simplest case)}
+\begin{lstlisting}[float,floatplacement=H,label={instrumentation},caption={Example of BASan memory sanitization on a 16-byte memory load}]
+.ASAN_ENTER:
+; saving registers on the stack
+stp x17, x16, [sp, -16]!
+stp x15, x14, [sp, -16]!
+str x13, [sp, -16]!
+; saving condition flags register
+mrs x13, nzcv
+; loading from shadow memory 
+mov x14, 0x1000000000
+lsr	x16, x1, 3
+ldrsh	w15, [x14, x16]
+; if shadow memory is empty (w15 == 0), continue execution
+cbz	w15, .LC_ASAN_EXIT
+; otherwise, report error and quit
+mov      x0, x1
+bl       __asan_report_load16_noabort
+
+.LC_ASAN_EXIT:
+; restoring condition flags register
+msr nzcv, x13
+; restoring registers from the stack
+ldr x13, [sp], 16
+ldp x15, x14, [sp], 16
+ldp x17, x16, [sp], 16
+; original instruction
+ldp x2, x3, [x1]
+\end{lstlisting}
 
 Unfortunately, the BASan instrumentation pass is not completely equivalent to 
 its source based counterpart, in fact we can highlight the following 
@@ -1651,7 +1684,9 @@ differences:
 		data section. For this reason, checks on global variables are disabled.
 	\item Missing stack variables bounds checking: similar to above, without 
 		source code it is extremely hard to find boundaries between variables 
-		on the stack.
+		on the stack. Stackframe bounds checking could be easily implemented 
+		(thus providing the same functionality as a stack canary), but for
+		now BASan has checks only for the heap.
 	\item Number of instrumented locations: ASan used as a compiler pass is 
 		able to prune the checking on a lot of memory accesses, since on many 
 		instances the safeness of a memory access can be determined at 
@@ -1729,7 +1764,7 @@ manual~\cite{specaliasing} to avoid problems with the \texttt{perlbench}
 benchmark. 
 
 To demonstrate the scalability of our approach, we rewrite binaries as large as
-the \texttt{gcc} benchmark (> 10MB).  We evaluate the performance of the
+the \texttt{gcc} benchmark (\textgreater 10MB).  We evaluate the performance of the
 symbolization engine by running the benchmarks with the binaries of each
 benchmark rewritten by \sysname without adding any kind of instrumentation. We
 then evaluate the performance of our memory sanitization instrumentation pass
@@ -1792,10 +1827,10 @@ symbolization process is very small. Detailed results can be found in
 state of the art static rewriters~\cite{egalito}.  This kind of overhead is
 probably due to unoptimal realignment of sections and code, as we produce
 position independent assembly without low level optimizations such as cache
-hits maximization, leaving this work entirely to the linker. Another important
-factor for the overhead is that each pointer building instruction \texttt{adrp}
+hits maximization. Another important
+factor for the introduced overhead is that each pointer building instruction \texttt{adrp}
 is symbolized with two instructions (an \texttt{adrp} followed by an
-\texttt{add}); so for each global variable access the binary makes the CPU will
+\texttt{add}): so for each global variable access the binary makes the CPU will
 lose a clock cycle (probably less, as many ARM CPUs have hardware optimizations
 for \texttt{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
 
@@ -1880,7 +1915,7 @@ that increases code size by up to three-fold, substantially degrading cache perf
 \begin{figure}[h]
 \includegraphics[width=15cm]{cloudlab.pdf}
 \centerfloat
-	\caption{Benchmark runtime on the Atlas machine. \todo{update plot for new gcc results} } 
+	\caption{Benchmark runtime on the Atlas machine.  } 
 \label{plot1}
 \end{figure}
 
@@ -1905,8 +1940,8 @@ true for \sysname's memory sanitization instrumentation (``Binary ASAN'' in
 \autoref{labellatabella}): the overhead is larger in programs that frequently
 use memory. 
 
-On average, binary ASAN is slower than source ASAN (109.73\% instead of 84.04\%
-average overhead \todo{change basan average overhead, incorrect}). The reasons
+On average, binary ASAN is slower than source ASAN (119.61\% instead of 84.04\%
+average overhead). The reasons
 behind the slowdown are the following:
 \begin{itemize}
 	\item Number of instrumented locations: Without source code available,
@@ -1962,12 +1997,73 @@ for variables in non-heap memory regions.
 
 \subsection{Optimization: register savings}
 One of the biggest performance improvements in our memory sanitization instrumentation 
-came from the re-usage of free registers without the need to save them on the stack
+came from the re-usage of ``free'' registers without the need to save them on the stack
 at each instrumentation location. 
+The impact of this optimization depends on the amount of registers that our static
+analysis determines to be ``free'' at every given instrumentation location. In the best
+case scenario (if no registers need to be pushed to the stack and then restored) 6 less
+instructions are used for the instrumentation.
+\autoref{wowasan} shows an
+example of this optimization on an instrumented 8-byte memory load. 
 
-\autoref{slowregisters} shows the overhead difference in the memory sanitization instrumentation
-when register savings are disabled. On average, register savings improved the overhead of
-the instrumentation pass by xx.xx\% \todo{THIS EXPERIMENT IS STILL RUNNING}
+
+
+\begin{figure}[h]
+\centerfloat
+\begin{minipage}{.55\textwidth}
+\begin{lstlisting}[belowskip=-2em]
+stp x17, x16, [sp, -16]!
+stp x15, x14, [sp, -16]!
+str x13, [sp, -16]!
+mrs x13, nzcv
+add x17, x1, 2488
+mov x14, 0x1000000000
+lsr		x16, x17, 3
+ldrsb		w15, [x14, x16]
+cbz		w15, .LC_ASAN_EXIT
+mov      x0, x17
+bl       __asan_report_load8_noabort
+.LC_ASAN_EXIT:
+msr nzcv, x13
+ldr x13, [sp], 16
+ldp x15, x14, [sp], 16
+ldp x17, x16, [sp], 16
+; original instruction
+ldr x1, [x1, #0x9b8] 
+\end{lstlisting}
+\end{minipage}\hspace{1cm}
+\begin{minipage}{.59\textwidth}
+\begin{lstlisting}[belowskip=-2em]
+mrs x13, nzcv
+add x17, x1, 2488
+mov x14, 0x1000000000
+lsr		x16, x17, 3
+ldrsb		w15, [x14, x16]
+cbz		w15, .LC_ASAN_EXIT
+mov      x0, x17
+bl       __asan_report_load8_noabort
+.LC_ASAN_EXIT:
+msr nzcv, x13
+; original instruction
+ldr x1, [x1, #0x9b8] 
+\end{lstlisting}
+\end{minipage} 
+\captionof{lstlisting}{Left: Instrumented 8-byte memory load. Right: Instrumented
+	8-byte memory load with register savings turned on (best case scenario).}
+\label{wowasan}
+\end{figure}
+
+
+
+
+\autoref{slowregisters} shows in detail the overhead difference in the memory
+sanitization instrumentation when register savings are disabled. We can see
+how register savings are critical to the performance of the instrumentation, 
+as on average the overhead is reduced by 48.1\%.
+
+%On average,
+%register savings improved the overhead of the instrumentation pass by xx.xx\%
+%\todo{THIS EXPERIMENT IS STILL RUNNING}
 
 \begin{table}
 \centering
@@ -1992,7 +2088,7 @@ the instrumentation pass by xx.xx\% \todo{THIS EXPERIMENT IS STILL RUNNING}
 \end{tabular}
 \caption{Overhead of \sysname's memory sanitization with register savings
 	turned on or off. On average, the register savings optimization produces code
-	with 26.5\% less overhead.}
+	with 48.1\% less overhead.}
 \label{slowregisters}
 \end{table}
 
@@ -2005,7 +2101,7 @@ would like to show that the tradeoff in performance is very large compared to th
 instrumenation that symbolization permits to do. 
 
 We implemented the same memory sanitization instrumentation pass by using
-trampolines, and ran the benchmarks with it to compare the timings. Results can
+trampolines, and ran the same benchmarks to compare the timings. Results can
 be seen in \autoref{slowtrampolines}. 
 
 This was a fairly simple experiment that used only a single type of very heavy instrumenation
@@ -2013,7 +2109,7 @@ This was a fairly simple experiment that used only a single type of very heavy i
 instructions need to be instrumented), but the difference in overhead is very large, with
 trampolines being 56\% slower on average compared to symbolized in-place instrumentation. 
 We expect lower differences in overhead when using lighter forms of instrumentation, but not
-enough lower to avoid being noticeable. 
+lower enough to avoid being noticeable. 
 
 
 
@@ -2088,7 +2184,7 @@ tests.
 
 
 
-\section{Comparison with Egalito}
+\section{Comparison to Egalito}
 The only state-of-the-art rewriter engine that had features comparable to
 \sysname is Egalito~\cite{egalito}. Egalito is a binary ``recompiler'' targeted
 at C, position-independent Linux executables that lifts binary to a custom
@@ -2139,9 +2235,6 @@ run all the benchmarks all over again}
 
 \todo{This section now has only list of related work I would like to talk 
 about, will be expanded later}
-
-
-\todo{Complain about egalito}
 
 
 
