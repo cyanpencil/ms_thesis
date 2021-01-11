@@ -1,27 +1,90 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% EPFL report package, main thesis file Goal: provide formatting for theses and
-% project reports Author: Mathias Payer <mathias.payer@epfl.ch>
+%% (Master) Thesis template
+% Template version used: v1.4
 %
-% This work may be distributed and/or modified under the conditions of the
-% LaTeX Project Public License, either version 1.3 of this license or (at your
-% option) any later version.  The latest version of this license is in
-% http://www.latex-project.org/lppl.txt
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Largely adapted from Adrian Nievergelt's template for the ADPS
+% (lecture notes) project.
 
 
-% useful links:
-% REPICA: https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8454360
-%         good state of the art overview, both ARM64 and arm32
-%         1. do not use symbolization, but relative address correction
-%         2. Detect jump tables and global pointers, but not fix them
-%         3. Overhead is exactly the same as retrowrite
+%% We use the memoir class because it offers a many easy to use features.
+\documentclass[11pt,a4paper,titlepage,oneside]{memoir}
+
+%% Packages
+%% ========
+
+%% LaTeX Font encoding -- DO NOT CHANGE
+\usepackage[OT1]{fontenc}
+
+%% Babel provides support for languages.  'english' uses British
+%% English hyphenation and text snippets like "Figure" and
+%% "Theorem". Use the option 'ngerman' if your document is in German.
+%% Use 'american' for American English.  Note that if you change this,
+%% the next LaTeX run may show spurious errors.  Simply run it again.
+%% If they persist, remove the .aux file and try again.
+\usepackage[english]{babel}
+
+%% Input encoding 'utf8'. In some cases you might need 'utf8x' for
+%% extra symbols. Not all editors, especially on Windows, are UTF-8
+%% capable, so you may want to use 'latin1' instead.
+\usepackage[utf8]{inputenc}
+
+%% This changes default fonts for both text and math mode to use Herman Zapfs
+%% excellent Palatino font.  Do not change this.
+\usepackage[sc]{mathpazo}
+
+%% The AMS-LaTeX extensions for mathematical typesetting.  Do not
+%% remove.
+\usepackage{amsmath,amssymb,amsfonts,mathrsfs}
+
+%% NTheorem is a reimplementation of the AMS Theorem package. This
+%% will allow us to typeset theorems like examples, proofs and
+%% similar.  Do not remove.
+%% NOTE: Must be loaded AFTER amsmath, or the \qed placement will
+%% break
+\usepackage[amsmath,thmmarks]{ntheorem}
+
+%% LaTeX' own graphics handling
+\usepackage{graphicx}
+
+%% We unfortunately need this for the Rules chapter.  Remove it
+%% afterwards; or at least NEVER use its underlining features.
+\usepackage{soul}
+
+%% This allows you to add .pdf files. It is used to add the
+%% declaration of originality.
+\usepackage{pdfpages}
+
+%% Some more packages that you may want to use.  Have a look at the
+%% file, and consult the package docs for each.
+\input{extrapackages}
+
+%% Our layout configuration.  DO NOT CHANGE.
+\input{layoutsetup}
+
+%% Theorem environments.  You will have to adapt this for a German
+%% thesis.
+\input{theoremsetup}
+
+%% Helpful macros.
+\input{macrosetup}
+
+%% Make document internal hyperlinks wherever possible. (TOC, references)
+%% This MUST be loaded after varioref, which is loaded in 'extrapackages'
+%% above.  We just load it last to be safe.
+\usepackage[linkcolor=black,colorlinks=true,citecolor=black,filecolor=black]{hyperref}
 
 
-%\pdfcompresslevel=0 \pdfobjcompresslevel=0
+%% Document information
+%% ====================
 
-\documentclass[a4paper,11pt,oneside]{report}
-\usepackage[MScThesis,lablogo]{EPFLreport} \usepackage{xspace}
+\title{ArmWrestling: efficient binary rewriting for ARM}
+\author{Luca Di Bartolomeo}
+\thesistype{Master Thesis}
+\advisors{Advisor: Prof.\ Dr.\ Mathias Payer\\Supervisor: Prof.\ Dr.\ Kenny Paterson}
+\department{Applied Cryptography Group\\Institute of Information Security\\Department of Computer Science}
+\department{Applied Cryptography Group\\Institute of Information Security\\Department of Computer Science}
+\date{\today}
+
+
 \usepackage{xcolor} 
 \usepackage{soul}
 \usepackage{hyperref}
@@ -30,16 +93,30 @@
 \usepackage{booktabs}
 \usepackage{siunitx}
 \usepackage{bm}
+\usepackage{xspace}
+
+
+\usepackage[
+  backend=biber,
+  style=numeric-comp,
+  hyperref=true,
+  %style=numeric,
+  %sorting=ydnt,
+  defernumbers=true,
+  maxbibnames=99,
+]{biblatex}
+\addbibresource{thesis.bib}
 
 \definecolor{lgray}{rgb}{0.92,0.92,0.92}
+\definecolor{dgray}{rgb}{0.46,0.46,0.46}
 
 \lstset{ %
   language=[x86masm]Assembler,    
   framexleftmargin=5pt,
   framexrightmargin=5pt,
   %framesep=100pt,
-  basicstyle=\linespread{1}\ttfamily\large,      
-  numbers=left,                  
+  basicstyle=\ttfamily\small,      
+  numbers=none,                  
   numberstyle=\small\color{gray},  
   numbersep=15pt,
   stepnumber=1,                   
@@ -50,54 +127,75 @@
   breakatwhitespace=false,      
   title=\lstname,              
   keywordstyle=\color{blue},     
-  commentstyle=\color{dkgreen}, 
+  commentstyle=\color{dgray}, 
   stringstyle=\color{mauve},   
   escapeinside={\%*}{*)},     
+  columns=fullflexible,
   morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, b.hi, ldr, movz}
 }
 
-
-\title{Arm Wrestling: efficient binary rewriting on ARM}
-\author{Luca Di Bartolomeo} \adviser{Prof. Mathias Payer (EPFL)}
-\supervisor{Prof. Kenny Paterson (ETH)}
+%\title{Arm Wrestling: efficient binary rewriting on ARM}
+%\author{Luca Di Bartolomeo} \adviser{Prof. Mathias Payer (EPFL)}
+%\supervisor{Prof. Kenny Paterson (ETH)}
 
 \linespread{1.5} 
-\newcommand{\sysname}{RetroWrite\_ARM\xspace}
-\newcommand{\sysnameold}{RetroWrite\_x64\xspace}
+\newcommand{\sysname}{RetroWrite-ARM\xspace}
+\newcommand{\sysnameold}{RetroWrite-x64\xspace}
 
-%\newcommand{\todo}[1]{\colorbox{cyan}{\parbox{0.9\textwidth}{#1}}}
-%\newcommand{\todo}[1]{%
-	%\begingroup 
-	%\sethlcolor{cyan}%
-	%\hl{TODO: #1}%
-	%\endgroup
-%}
-%\newcommand{\mat}[1]{%
-	%\begingroup 
-	%\sethlcolor{red}%
-	%\hl{MAT: #1}%
-	%\endgroup
-%}
 
 \DeclareRobustCommand{\todo}[1]{{\sethlcolor{cyan}\hl{TODO: #1}}}
 \DeclareRobustCommand{\mat}[1]{{\sethlcolor{red}\hl{MAT: #1}}}
 
+\begin{document}
 
 
-\dedication{ 
-\begin{raggedleft}
+\frontmatter
+
+%% Title page is autogenerated from document information above.  DO
+%% NOT CHANGE.
+\begin{titlingpage}
+  \calccentering{\unitlength}
+  \begin{adjustwidth*}{\unitlength-24pt}{-\unitlength-24pt}
+	\maketitle
+  \end{adjustwidth*}
+\end{titlingpage}
+
+
+
+\clearpage
+\renewcommand{\abstractname}{}
+\begin{abstract}
+
+
+\vspace*{4cm}
+This thesis was developed with the guidance of prof.Mathias Payer and the
+	HexHive research group at EPFL, and under the remote supervision of prof.
+	Kenneth Paterson at ETH.
+\end{abstract}
+
+
+
+\clearpage
+\renewcommand{\abstractname}{}
+\begin{abstract}
+
+\thispagestyle{empty}
+\begin{flushright}
 	No matter where you go, everyone is connected.\\
 	--- Serial Experiments Lain\\
-\end{raggedleft} 
-\vspace{4cm} 
-\begin{center}
-	Dedicated to my parents, my sister Sara, my dear Giulia, to my friends back 
-	in Rome and to my roommates Matteo and Filippo who all inspired me and kept 
-	up with my constant complaining. Thanks!
-\end{center} 
-}
+\end{flushright} 
 
-\acknowledgments{
+\vspace*{4cm}
+Dedicated to my parents, my brothers Sara and Leo, my dear Giulia, to my friends back 
+in Rome and to my roommates Matteo and Filippo who all inspired me and kept 
+up with my constant complaining. Thanks!
+\end{abstract}
+
+
+
+\clearpage
+\renewcommand{\abstractname}{Acknowledgments}
+\begin{abstract}
 	I would like to thank my advisor, Prof. Mathias Payer, for his support,
 	guidance, and for trusting me by assigning me this inspiring project.  I
 	admire him a lot and I wish all the best for him, and in particular I hope
@@ -122,24 +220,11 @@
 	spend so many weekends without going out but ultimately lead me to meet so 
 	many new interesting people, and the teams I had played with occasionally, 
 	namely polyglots and TRX. Thanks!
-}
+\end{abstract}
 
-\begin{document}
-\maketitle
-\makededication
-\makeacks
-
-
+\clearpage
+\renewcommand{\abstractname}{Abstract}
 \begin{abstract}
-
-	%While there were good recent attempts, 
-	%limiting our computing to only open-source software
-	%is particularly hard, and especially on the mobile phone market even the
-	%most determined users are often forced to use closed-source libraries or
-	%modules.  Those often run at privileges higher than we might want (e.g.,
-	%manufacturer specific kernel modules \cite{androidclosed}), and are also
-	%hard to audit for vulnerabilities. 
-
 	Closed source programs are particularly hard to audit for vulnerabilities.
 	Moreover, it is often the case that modern security measures and
 	mitigations are available only as compiler passes that require possession
@@ -153,8 +238,6 @@
 	in practice it is almost impossible to restrict our computing to
 	exclusively open source and audited software.  It is then of paramount
 	importance that we find new ways of securing software without source code.
-
-
 
 	Many existing tools were developed to improve the auditability of closed
 	source programs, especially aimed at helping the fuzzing process, with
@@ -178,23 +261,27 @@
 	benchmarks show that it is \todo{xx\%} faster than Valgrind's \texttt{memcheck}.
 \mat{Make XX a macro and use it throughout when you refer to that number.}
 
-	%which implements the symbolization engine and the memory
-	%sanitization instrumentation. 
-
-	%While \sysname is not the only binary rewriter for \texttt{x86}, there are 
-	%very few that are aimed at the ARM64 architecture. In particular, most of 
-	%them resort to lifting to an intermediate IR (achieving more flexibility 
-	%but losing fine-grained control over the instrumented instructions) or use 
-	%approaches like trampolines which make the whole problem much easier but 
-	%also introduce a noticeable overhead.
-	%\todo{add a fourth paragraph conclusion to this abstract, like "our proof of work 
-	%implementation of retrowrite is xx\% faster than QEMU and etc..."}
-
-
 \end{abstract}
 
 
-\maketoc
+\clearpage
+
+%% TOC with the proper setup, do not change.
+\cleartorecto
+\tableofcontents
+\mainmatter
+
+%% Your real content!
+%\input{introduction}
+%\input{rules}
+%\input{typography}
+%\input{sections}
+
+
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%
 \chapter{Introduction}
@@ -618,8 +705,10 @@ be executed).
 Originally, symbolization was introduced by Uroboros~\cite{uroboros}, and was later used
 by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 
+
 \begin{figure}[h]
-\begin{minipage}{.45\textwidth}
+\centerfloat
+\begin{minipage}{.55\textwidth}
 
 \begin{lstlisting}
 0x400: adr  x0, 0xab0000
@@ -629,8 +718,8 @@ by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 0x410: ret
 \end{lstlisting}
 
-\end{minipage}\hfill
-\begin{minipage}{.45\textwidth}
+\end{minipage}\hspace{1cm}
+\begin{minipage}{.55\textwidth}
 
 \begin{lstlisting}
 .LC400: adr  x0, .LCab0000
@@ -810,8 +899,8 @@ avoid limiting any kind of instrumentation.
 \section{System architecture}
 
 \begin{figure}[h]
+\centerfloat
 \includegraphics[width=15cm]{symbolizer.png}
-\centering
 \caption{Overview of the structure of \sysname}
 \end{figure}
 
@@ -969,7 +1058,7 @@ case is loaded into register \texttt{w1}, and then later added to the base case
 \texttt{x0} on line 5. 
 
 
-\begin{lstlisting}[float,floatplacement=H,label={lst:jmptbl},caption={Example of a jump table in \texttt{aarch64}}]
+\begin{lstlisting}[float,floatplacement=H,label={lst:jmptbl},caption={Example of a jump table in \texttt{aarch64}},numbers=left]
 adrp x0, <jump_table_page_address>
 add x0, x0, <jump_table_page_offset>
 ldrb w1, [x0, w1, uxtw]
@@ -1160,7 +1249,7 @@ difficulties:
 
 \begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \texttt{adrp} instruction}]
 adrp x0, 0xab0000
-add  x1, x0, 256   // pointer 0xab100
+add  x1, x0, 256   ; pointer 0xab100
 ldr  x2, [x0, 512] // pointer 0xab200
 add  x0, x0, 128   // pointer 0xab080
 \end{lstlisting}
@@ -1269,14 +1358,14 @@ the offset inside a page).
 \begin{figure}[h]
 \label{lst:construction}
 \begin{minipage}{\textwidth}
-\begin{lstlisting}[basicstyle=\ttfamily\small]
+\begin{lstlisting}[]
 0x400: adrp  x0, 0xab000
 0x404: add x0, x0, 256              // pointer to 0xab100
 \end{lstlisting}
 \end{minipage}
 
 \begin{minipage}{\textwidth}
-	\begin{lstlisting}[basicstyle=\ttfamily\small]
+	\begin{lstlisting}[]
 .LC400: adrp  x0, .LCab100          // base page 
 .LC404: add x0, x0, :lo12:.LCab100  // page offset
 \end{lstlisting}
@@ -1299,8 +1388,9 @@ we symbolize them without breaking their functionality.
 
 
 \begin{figure}[h]
-\begin{minipage}{.50\textwidth}
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\centerfloat
+\begin{minipage}{.60\textwidth}
+\begin{lstlisting}[numbers=none]
 0x400: adrp x0, 0x8000
 0x404: add x0, x0, 3
 0x408: ldrb w1, [x0, w1, uxtw]
@@ -1314,9 +1404,9 @@ we symbolize them without breaking their functionality.
 0x428: movz x0, 100 // case 4
 0x42c: ret
 \end{lstlisting}
-\end{minipage}\hfill
-\begin{minipage}{.45\textwidth}
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\end{minipage}\hspace{1cm}
+\begin{minipage}{.50\textwidth}
+\begin{lstlisting}[numbers=none]
 0x8003: byte 0x0   // case 0
 0x8004: byte 0x0   // case 1
 0x8005: byte 0x0   // case 2
@@ -1385,7 +1475,7 @@ the number of cases of the jump table based on the constant of the comparison.
 
 
 \begin{figure}[h]
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\begin{lstlisting}[numbers=none]
 0x3f8: cmp w1, 128
 0x3fc: b.hi .default_case
 0x400: adrp x0, 0x8000
@@ -1395,7 +1485,7 @@ the number of cases of the jump table based on the constant of the comparison.
 0x410: add x0, x0, w1, sxtb 2
 0x414: br x0
 \end{lstlisting}
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\begin{lstlisting}[numbers=none]
 Analyzing 0x414: br x0
 x0 = x0
 x0 = x0 + (w1 << 2)
@@ -1438,17 +1528,18 @@ In the next subsection we will cover how we actually support adding arbitrary
 amount of instrumentation. 
 
 \begin{figure}[h]
-\begin{minipage}{.45\textwidth}
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\centerfloat
+\begin{minipage}{.55\textwidth}
+\begin{lstlisting}[numbers=none]
 0x8003: byte 0x0   // case 0
 0x8004: byte 0x0   // case 1
 0x8005: byte 0x0   // case 2
 0x8006: byte 0x8   // case 3
 0x8007: byte 0x10  // case 4
 \end{lstlisting}
-\end{minipage}\hfill
-\begin{minipage}{.48\textwidth}
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\end{minipage}\hspace{1cm}
+\begin{minipage}{.59\textwidth}
+\begin{lstlisting}[numbers=none]
 0x8003: byte (.LC418 - .LC418) / 4
 0x8004: byte (.LC418 - .LC418) / 4
 0x8005: byte (.LC418 - .LC418) / 4
@@ -1495,7 +1586,7 @@ up to 4, but we insert a standard \texttt{lsl} instruction before if it's higher
 An example of this can be found in Listing \ref{enlarged}.
 
 \begin{figure}[h]
-\begin{lstlisting}[basicstyle=\ttfamily\small,numbers=none]
+\begin{lstlisting}[numbers=none]
 .LC400: adrp x0, .LC8003
 .LC404: add x0, x0, :lo12:.LC8003
 .LC408: ldrb w1, [x0, w1, uxtw]
@@ -1535,8 +1626,7 @@ instrumentation just before each access to check the relevant bytes of shadow
 memory and error out in case an overflow or other memory corruption was found.
 
 
-\begin{lstlisting}[float,floatplacement=H,language=C,label={lst:asan},caption={ASan checking algorithm 
-implemented in C}]
+\begin{lstlisting}[float,floatplacement=H,language=C,label={lst:asan},caption={AddressSanitizer checking algorithm example implementation}]
 byte shadow_value = *(MemToShadow(address));
 if (shadow_value) {
   if ((address & 7) + AccessSize - 1 >= shadow_value) {
@@ -1576,7 +1666,7 @@ Despite the following limitations, the BASan instrumentation pass provides the
 same core functionality of the original ASan compiler pass (memory sanitization 
 on the heap), and with very little additional overhead.
 
-\subsubsection{Optimization: register savings}.
+\subsubsection{Optimization: register savings}
 The snippets of assembly used to implement ASan memory checking require some 
 temporary register usage to store intermediate calculations, and thus require 
 special precautions before inserting them in the middle of a binary. Our first 
@@ -1619,8 +1709,8 @@ The machines we had available are the following:
 	\item An Atlas/A57 (2.4GHz) CPU with 64 GB of RAM
 \end{itemize}
 
-\mat{Why use two machines? A low end and a high end configuration to highlight the two different
-device classes.}
+%\mat{Why use two machines? A low end and a high end configuration to highlight the two different
+%device classes.}
 
 To benchmark the performance of rewritten binaries, we used the SPEC CPU 2017
 benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
@@ -1734,9 +1824,9 @@ inside measurement error.
 
 
 
-
 \begin{table}
-\centering
+
+\centerfloat
 \sisetup{detect-weight=true}
 \sisetup{mode=text}
 \robustify\bfseries
@@ -1793,7 +1883,7 @@ that increases code size by up to three-fold, substantially degrading cache perf
 
 \begin{figure}[h]
 \includegraphics[width=15cm]{cloudlab.pdf}
-\centering
+\centerfloat
 	\caption{Benchmark runtime on the Atlas machine. \todo{update plot for new gcc results} } 
 \label{plot1}
 \end{figure}
@@ -1801,7 +1891,7 @@ that increases code size by up to three-fold, substantially degrading cache perf
 \begin{center}
 \begin{figure}[h]
 \includegraphics[width=\textwidth]{raspberry.pdf}
-\centering
+\centerfloat
 	\caption{Benchmark runtime on the raspberry machine. \todo{LBM SOURCE ASAN time is very strange. seems too low. might want to rerun everything to be extra sure. }}
 \label{plot2}
 \end{figure}
@@ -1843,13 +1933,13 @@ dynamic instrumentation is around 10x the overhead of binary ASAN, depending on
 the amount of memory accesses of the benchmark. 
 
 \begin{table}
-\centering
+\centerfloat
 \begin{tabular}{lrrrr}
 \toprule
 	\textbf{Name} \hspace{4em} &\textbf{Symbolization only} & \textbf{Source ASAN} & \textbf{Binary ASAN} & \textbf{Valgrind} \\
 \toprule
 
-	\texttt{cpugcc\_r   } & 0.95\% &145.80\% & x.xx\% & 1729.20\% \\
+	\texttt{cpugcc\_r   } & 0.95\% &145.80\% &196.09\% & 1729.20\% \\
 	\texttt{perlbench\_r} & 2.91\% &173.84\% &260.10\% &3377.03\% \\
 	\texttt{imagick\_r}   & 0.30\% & 71.53\% & 71.17\% &1578.53\% \\
 	\texttt{nab\_r      } & 0.34\% & 28.57\% & 27.21\% &1110.82\% \\
@@ -1857,13 +1947,12 @@ the amount of memory accesses of the benchmark.
 	\texttt{mcf\_r      } &-0.07\% & 40.77\% & 83.74\% & 390.94\% \\
 	\texttt{lbm\_r      } & 0.59\% & 49.58\% & 97.31\% & 715.46\% \\
 	\midrule
-	\textbf{Average} & \textbf{0.76\%} & \textbf{84.04\%} & \textbf{109.73\%} & \textbf{1429.94\%} \\
+	\textbf{Average} & \textbf{0.76\%} & \textbf{84.04\%} & \textbf{119.61\%} & \textbf{1429.94\%} \\
 \bottomrule
 \end{tabular}
 \caption{Overhead of \sysname without instrumentation and of \sysname with
 BASAN instrumentation on SPEC CPU2017 on the Atlas machine compared to the original benchmark
-and the original benchmarks compiled with source based ASAN.
-\todo{update basan average, which is slightly wrong} } 
+and the original benchmarks compiled with source based ASAN.  } 
 \label{labellatabella}
 \end{table}
 
@@ -1889,23 +1978,25 @@ the instrumentation pass by xx.xx\% \todo{THIS EXPERIMENT IS STILL RUNNING}
 \sisetup{detect-weight=true}
 \sisetup{mode=text}
 \robustify\bfseries
-	\begin{tabular}{lSS[table-format=1.2]S[table-format=3.2]}
+	\begin{tabular}{lS[table-format=3.2]S[table-format=1.2]}
 \toprule
 		\textbf{Name} \hspace{4em} & \textbf{Register savings} & \textbf{No registers} \\
 
 \toprule
-		\texttt{perlbench\_r} &  260.10 \si{\percent} & xxxx  \si{\percent} \\
-		\texttt{imagick\_r}   &  71.17  \si{\percent} & xxxx  \si{\percent} \\
-		\texttt{nab\_r      } &  27.21  \si{\percent} & xxxx  \si{\percent} \\
-		\texttt{xz\_r   }     &  144.76 \si{\percent} & xxxx  \si{\percent} \\
-		\texttt{mcf\_r      } &  83.74  \si{\percent} & xxxx \si{\percent} \\
-		\texttt{lbm\_r      } &  97.31  \si{\percent} & xxxx  \si{\percent} \\
+		\texttt{gcc\_r}       &  196.09\si{\percent} & 259.64  \si{\percent} \\
+		\texttt{perlbench\_r} &  260.10\si{\percent} & 453.71  \si{\percent} \\
+		\texttt{imagick\_r}   &  71.17 \si{\percent} & 173.40  \si{\percent} \\
+		\texttt{nab\_r      } &  27.21 \si{\percent} & 74.22  \si{\percent} \\
+		\texttt{xz\_r   }     &  144.76\si{\percent} & 212.01  \si{\percent} \\
+		\texttt{mcf\_r      } &  83.74 \si{\percent} & 124.92 \si{\percent} \\
+		\texttt{lbm\_r      } &  97.31 \si{\percent} & 99.58  \si{\percent} \\
 	\midrule
-		\textbf{Average} & \bfseries 109.73\% & \bfseries xxxx \\
+		\textbf{Average} & \bfseries 119.61\si{\percent} & \bfseries 195.79\% \\
 \bottomrule
 \end{tabular}
 \caption{Overhead of \sysname's memory sanitization with register savings
-	turned on or off.}
+	turned on or off. On average, the register savings optimization produces code
+	with 26.5\% less overhead.}
 \label{slowregisters}
 \end{table}
 
@@ -2170,5 +2261,20 @@ architecture and more.
 %
 % In case you ever need an (optional) appendix.
 %
+
+\end{document}
+
+
+
+\appendix
+
+\input{appendix}
+
+\backmatter
+
+\bibliographystyle{plain}
+%\bibliography{thesis}
+
+\includepdf[pages={-}]{declaration-originality.pdf}
 
 \end{document}
