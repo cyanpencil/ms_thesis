@@ -1915,7 +1915,7 @@ that increases code size by up to three-fold, substantially degrading cache perf
 \begin{figure}[h]
 \includegraphics[width=15cm]{cloudlab.pdf}
 \centerfloat
-	\caption{Benchmark runtime on the Atlas machine.  } 
+	\caption{Benchmark runtime on the Atlas machine. The yaxis has been limited at 8000 for clear depiction of smaller values.} 
 \label{plot1}
 \end{figure}
 
@@ -1923,7 +1923,7 @@ that increases code size by up to three-fold, substantially degrading cache perf
 \begin{figure}[h]
 \includegraphics[width=\textwidth]{raspberry.pdf}
 \centerfloat
-	\caption{Benchmark runtime on the raspberry machine. \todo{LBM SOURCE ASAN time is very strange. seems too low. might want to rerun everything to be extra sure. }}
+	\caption{Benchmark runtime on the raspberry machine. The yaxis has been limited at 8000 for clear depiction of smaller values.\todo{LBM SOURCE ASAN time is very strange. seems too low. might want to rerun everything to be extra sure. }}
 \label{plot2}
 \end{figure}
 \end{center}
@@ -2233,47 +2233,147 @@ run all the benchmarks all over again}
 
 \setlength{\parindent}{0cm}
 
-\todo{This section now has only list of related work I would like to talk 
-about, will be expanded later}
+
+\section{Dynamic binary rewriting}
+While dynamic rewriters are scalable and do not suffer from the limitations
+of static analysis, they incur in large overhead and are not suited 
+for high performant instrumentation. 
+They can either make use of the operating systems' debugging primitives
+(ptrace API in Linux, or the application debugging API in Windows), or
+of a custom loader, like \texttt{PIN}~\cite{pin} or \texttt{DynamorIO}, to
+modify and instrument the target binary at runtime. 
+While they have to solve similar problems when compared to static rewriting
+(such as disassembly, CFG recovery, and instrumentation location), they can
+leverage run-time information that is unavailable to static rewriters.
+For example, a dynamic rewriter is able to know the target of an indirect 
+branch before executing it, since the register values are known at any given
+point during the execution. 
+Dynamic rewriters can also be built on top of emulation frameworks, which
+is the case for \texttt{QASAN}~\cite{qasan} which uses \texttt{QEMU} to 
+implement AddressSanitizer memory sanitization on any binary supported 
+by \texttt{QEMU}. 
+
+
+\section{Static binary rewriting}
+We will divide static rewriters in the technique they use to insert
+instrumentation in the target binary, namely trampolines, lifting to an
+intermediate representation, and symbolization.
+
+\subsection{Static rewriters that use trampolines}
+\texttt{E9patch}~\cite{e9patch} is a recent static rewriter for \texttt{x86\_64} Linux
+ELF binaries, that inserts instrumentation with trampolines. This techniques
+works by substituting the instruction that need to be instrumented by a non-conditional
+jump that points to the instrumentation. At the end of the instrumentation, another
+non-conditional jump brings the execution back to next instruction of the original code. 
+\texttt{E9Patch} introduces novel techniques to solve the problem of 
+substituting an instruction in a varying-length ISA such as x64 can be hard, and using
+trampolines has the advantage of requiring very low static analysis beforehand. However,
+a large overhead is introduced at each instrumentation location, as two jumps need to be
+executed each time.
+
+\texttt{BISTRO}~\cite{bistro} is aimed at the rewriting of individual components in an
+executable, and works by \emph{stretching} the binary to make space for the new instrumentation;
+however it still makes use of trampolines to avoid breaking indirect call targets.
+
+
+\subsection{Static rewriters that lift to IR / full translation}
+Lifting the target binary to an intermediate representation has multiple 
+advantages. First, if the chosen IR is a standardized one (such as the LLVM 
+IR), a wide variety of tools can be used to apply instrumentation and modify
+the lifted IR.  \texttt{McSema}~\cite{mcsema} is a great example of a LLVM IR
+lifting approach that supports \texttt{x86\_64} ELF and PE binaries, with 
+support for C++ exceptions and \texttt{aarch64} support in development. The IR produced by \texttt{McSema}
+can be readily fuzzed with \texttt{libFuzzer}, an LLVM-based instrumented
+fuzzer that would normally require the source code. 
+The disadvantages in lifting to an IR are in the fact that this requires very heavy static
+analysis (in fact, \texttt{McSema} uses \texttt{IDAPro} as backend) and some overhead
+can be introduced by unoptimal lifting of the original binary. 
+
+\subsection{Static rewriters that use symbolization}
+In 2015, \texttt{Uroboros}~\cite{uroboros} was the first approach in generating
+\emph{reassemblable assembly} from \texttt{x86} binaries. Unfortunately,
+it still suffered from classic challenges in static analysis such as relying on
+heuristics to differentiate between scalars and references. Two years later
+\texttt{Ramblr}~\cite{ramblr} significantly improved on \texttt{Uroboros}' approach
+with better heuristics and lesser overhead. In 2020, \sysnameold restricted the
+class of target binaries to position-independent ones, finally solving the problem
+of distinction between scalars and references.
+
+\section{Static rewriters aimed at ARM binaries}
+In this section we will focus on static rewriters on the ARM architecture, which have
+to tackle the same challenges with fixed-size instruction sets as we did.
+
+\texttt{Repica}~\cite{repica} is one of the most recent static rewriters for both 32-bit and
+64-bit ARM binaries, and uses an instrumentation technique similar to reassembly: instrumentation
+can be inserted both before and after an instruction, and relative jumps are carefully adjusted
+to keep control flow and references exact. The authors use a backwards-slicing technique to 
+detect jump tables similar as ours, and recover pointer construction mechanisms with data-flow
+propagation. Their instrumentation however does not utilize optimizations such as register savings, 
+incurring in higher overhead than necessary.
+
+\texttt{Egalito}~\cite{egalito}. is a binary ``recompiler'' targeted
+at C, position-independent ELF binaries with support for both 32-bit and 64-bit x86 and ARM.
+\texttt{Egalito} lifts binaries to a custom IR to insert instrumentation and
+supports a large variety of instrumentation and transformation passes, and has
+a reported similar baseline overhead to \sysname (0.46\% on SPEC CPU2006). Detection of 
+jump tables is done through backwards-slicing; the authors do not specify how
+they solved pointer construction recovery.
+
+Nor \texttt{egalito} neither \texttt{repica} address the problem of jump table enlargement, fundamental
+in the case of heavy-weight instrumentation like memory sanitization.  Even though it is older, \texttt{RevARM}~\cite{revarm} is the only one that supports resizing of jump tables to insert large instrumentation; however
+\texttt{RevARM} \emph{stretches} the jump table to make space for larger offsets, instead of multiplying the
+already existings offsets and keeping the jump table of the same size as we do. Also, \texttt{RevARM} only supports
+32 bit ARM binaries. 
+
+To the best of our knowledge,
+no other static rewriter for \texttt{aarch64} that efficiently supports heavy-weight instrumentation
+such as AddressSanitizer has been proposed, other than this study. \todo{Maybe a bit too cheesy?}
 
 
 
-\textbf{Dynamic rewriters in general}:\\
-First, the good ol' ones: \texttt{PIN}~\cite{pin}, 
-\texttt{Valgrind}~\cite{valgrind} and \texttt{DynInst}~\cite{dyninst}.
-
-More recently, \texttt{Multiverse}~\cite{multiverse}, \texttt{Frida} and 
-\texttt{DynamorIO} are interesting examples.
-
-\texttt{QASAN}~\cite{qasan} is similar to \sysname's BASan, much slower but 
-also much more portable (works on any binary supported by QEMU)
 
 
+%and \texttt{Ramblr}~\cite{ramblr} are the 
+%first reassemblable assembly approaches (symbolization), 
+%\sysname~\cite{dinesh20oakland} (x86 version)
 
-\textbf{Static rewriters that use lifting to IR}:\\
-\texttt{McSema}~\cite{mcsema} is a great example of LLVM IR lifting approach, 
-also particularly nice as it supports C++ exceptions
 
-\textbf{Static rewriters that use trampolines}:\\
-\texttt{E9patch}~\cite{e9patch} uses only trampolines, no need to recover 
-control flow, but also noticeable overhead
+%\textbf{Dynamic rewriters in general}:\\
+%First, the good ol' ones: \texttt{PIN}~\cite{pin}, 
+%\texttt{Valgrind}~\cite{valgrind} and \texttt{DynInst}~\cite{dyninst}.
 
-%\todo{Also say that trampolines are especially effective on ARM because every 
-%instruction is always 4 bytes, so you don't need to worry about overwriting 
-%instructions shorter than a jmp like in x86}
+%More recently, \texttt{Multiverse}~\cite{multiverse}, \texttt{Frida} and 
+%\texttt{DynamorIO} are interesting examples.
 
-\textbf{Static rewriters that use symbolization}:\\
-\texttt{Uroboros}~\cite{uroboros} and \texttt{Ramblr}~\cite{ramblr} are the 
-first reassemblable assembly approaches (symbolization), 
-\sysname~\cite{dinesh20oakland} (x86 version)
+%\texttt{QASAN}~\cite{qasan} is similar to \sysname's BASan, much slower but 
+%also much more portable (works on any binary supported by QEMU)
 
-\textbf{Static rewriters aimed at ARM binaries}:\\
-\texttt{Repica}~\cite{repica} is probably the most recent addition to binary 
-rewriters aimed at ARM binaries.  
 
-\todo{Discuss Bistr?}~\cite{bistro}
 
-For more check out recent surveys on the area of binary rewriting~\cite{binaryrewritingsurvey}
+%\textbf{Static rewriters that use lifting to IR}:\\
+%\texttt{McSema}~\cite{mcsema} is a great example of LLVM IR lifting approach, 
+%also particularly nice as it supports C++ exceptions
+
+%\textbf{Static rewriters that use trampolines}:\\
+%\texttt{E9patch}~\cite{e9patch} uses only trampolines, no need to recover 
+%control flow, but also noticeable overhead
+
+%%\todo{Also say that trampolines are especially effective on ARM because every 
+%%instruction is always 4 bytes, so you don't need to worry about overwriting 
+%%instructions shorter than a jmp like in x86}
+
+%\textbf{Static rewriters that use symbolization}:\\
+%\texttt{Uroboros}~\cite{uroboros} and \texttt{Ramblr}~\cite{ramblr} are the 
+%first reassemblable assembly approaches (symbolization), 
+%\sysname~\cite{dinesh20oakland} (x86 version)
+
+%\textbf{Static rewriters aimed at ARM binaries}:\\
+%\texttt{Repica}~\cite{repica} is probably the most recent addition to binary 
+%rewriters aimed at ARM binaries.  
+
+%\todo{Discuss Bistr?}~\cite{bistro}
+
+%For more check out recent surveys on the area of binary rewriting~\cite{binaryrewritingsurvey}
 
 }
 
