@@ -1212,7 +1212,7 @@ original functionality of the binary.
 
 %This section is usually 3-5 pages.
 
-In this chapter we cover the implementation of the rewriter, and of BASan, the memory
+In this chapter we cover the implementation of the rewriter and of BASan, the memory
 sanitization instrumentation pass. We will also share details on the optimizations
 we implemented to minimize instrumentation overhead.
 
@@ -1221,7 +1221,7 @@ we implemented to minimize instrumentation overhead.
 
 Symbolization requires detection of every single pointer and control flow
 mechanism in the binary. In \texttt{aarch64}, this may prove to be harder than
-it looks, as in fact pointer construction patterns are difficult to recover
+it looks, as pointer construction patterns are difficult to recover
 and jump tables are not as heuristics friendly as they are in x86. 
 In the following subsections we will go over each problem and explain our
 approach to tackle it. 
@@ -1288,14 +1288,14 @@ add  x3, x3, 512   ; pointer 0xab200
 
 We implemented a light data flow recovery algorithm that statically analyzed
 the control flow and the stack usage of a given function, following around the
-register used for the ``\lstinline{adrp}'' and checking for its usage, to address all
+register used by the ``\lstinline{adrp}'' and checking for its usage, to address all
 the difficulties stated above. However, it is particularly hard to support
 every single edge case, and missing a single pointer symbolization is fatal and
 will cause a crash when the pointer is dereferenced (which sometimes happens a
 while after the pointer is built, and can be very time consuming to detect and
 debug).  While this pattern matching approach alone worked with the vast
 majority of instances of pointer construction, it was insufficient to
-completely symbolize all pointers and failed on large binaries. 
+completely symbolize all pointers and often failed on large binaries. 
 
 Our second approach took advantage of the fact that \sysname does not 
 instrument data sections, and the vast majority of global variables point to
@@ -1336,7 +1336,7 @@ using \emph{literal pools} and using pointer construction.
 
 \subsubsection{Literal pools}
 
-A literal pools is a special region of memory in a binary that stores absolute
+A literal pool is a special region of memory in a binary that stores absolute
 addresses. It is widely used in \texttt{ARM} to overcome the challenge of not
 being able to store a pointer in a single instruction. 
 
@@ -1347,12 +1347,12 @@ assembled with a pc-relative load to the nearest literal pool that contains the
 full pointer address.  The location of the literal pool must be manually
 specified in assembly through the \texttt{.ltorg} directive. Usually, literal
 pools are stored between functions in the \texttt{.text} sections. Since the
-pc-relative load can only target addresses in the $\pm$ 1 MB range, literal
+``\lstinline{ldr}'' pc-relative load can only target addresses in the $\pm$ 1 MB range, literal
 pools must be stored inside functions if they are larger than 2 MB. 
 
 In our first implementation we used literal pools to symbolize pointers, but we
 detected noticeable overhead introduced even without instrumentation added. The
-runtime of binaries without instrumentation was around 5\% higher when compared
+runtime of symbolized binaries without instrumentation was around 5\% higher when compared
 to the original binaries.  The reason behind the additional overhead is
 twofold: first, each pointer retrieved through literal pools requires a memory
 access each time; secondly, literal pools occupy precious space in the
@@ -1366,9 +1366,9 @@ use pointer construction ourselves. The symbolization of a pointer construction
 is composed of two parts: the symbolized ``\lstinline{adrp}'' base page loading and
 the symbolized ``\lstinline{add}'' for the page offset. An example of such process can
 be found in Listing \ref{lst:construction}. The ``\lstinline{adrp}'' is symbolized by just
-substituting its argument with the symbolized counter part.  The page offset part,
+substituting its argument address with the symbolized label.  The page offset part,
 instead, is symbolized through a special assembler directive that evaluates to the
-last 12 bits of the specified assembly label (and 12 bits are enough to specify
+last 12 bits of the specified assembly label (and 12 bits are exactly enough to specify
 the offset inside a page). 
 
 \begin{figure}[h]
@@ -1394,7 +1394,7 @@ the offset inside a page).
 
 \section{Jump Tables}
 
-Switch statements in \texttt{ARM} binaries are stored as a table of offsets,
+Switch statements in \texttt{ARM} binaries are stored as a list of offsets,
 instead of absolute addresses like in \texttt{x86}. This makes symbolizing them
 particularly tricky. First of all, detecting them is not easy:
 listing~\ref{omgjmptbl} shows how they do not have a particular pattern in
@@ -1443,18 +1443,21 @@ and how did we symbolize them without breaking their functionality.
 
 
 \subsection{Detection of jump tables}
-Unlike \texttt{x86}, on \texttt{ARM} jump tables are not encoded as sets of code
-pointers in the \texttt{.rodata} section.
-Similar to \texttt{x86}, on \texttt{ARM} compilers use specific patterns to construct
-code pointers, for example through
-\autoref{jmptbl} and \autoref{omgjmptbl}. 
+%Unlike \texttt{x86}, on \texttt{ARM} jump tables are not encoded as sets of code
+%pointers in the \texttt{.rodata} section.
+%Similar to \texttt{x86}, on \texttt{ARM} compilers use specific patterns to construct
+%code pointers, for example through
+%\autoref{jmptbl} and \autoref{omgjmptbl}. 
 Our algorithm to detect a jump table pattern works as follows:
 
 \begin{itemize}
 	\item Recover the complete control flow of each function, using the linear sweep technique.
-	\item Mark all indirect jump locations, identified by \texttt{br} instructions.
-	\item Backwards-slice the code to find all paths that may lead to
-		this instruction, with a maximum path length of 50 instructions. This upper bound is generous (in all the cases we analyzed 15 instructions were enough) and prevents computationally expensive path explosions.
+	\item Mark all indirect jump locations, identified by ``\lstinline{br}'' instructions.
+	\item For each ``\lstinline{br}'' indirect jump, backwards-slice the code
+		to find all paths that may lead to the ``\lstinline{br}'', with a maximum
+		path length of 50 instructions. This upper bound is generous (in all
+		the cases we analyzed 15 instructions were enough) and prevents
+		computationally expensive path explosions.
 	\item Reverse-emulate every path, and store every possible (symbolized)
 		value that the register of the indirect call can have.
 	\item If the value that the register can have is the same for every path,
@@ -1474,7 +1477,7 @@ the standard jump table expression, which is the following:
 
 \begin{minipage}{\textwidth}
 \centerfloat
-\texttt{base\_case\_addr + (*(jump\_table\_base\_addr + (register\_case\_number * ?)) \textless\.\textless\  ?)} 
+\verb|base_case_addr + *(jump_table_base_addr + register_case_number * ?) << ?|
 \end{minipage}
 
 The symbol \texttt{?} is a wildcard for any (positive) integer value.
@@ -1484,13 +1487,15 @@ table offsets. Lastly, \texttt{register\_case\_number} is a register with as
 value the number of the case that is going to be executed. 
 
 Finally, if the indirect call is recognized as a jump table, the last step is
-determining how many cases the switch represented by the jump table is made of.
+determining how many cases the jump table is made of.
 We solved this by backward-slicing from the instruction loading the case number
-(\texttt{0x408} in \autoref{emulator}) and looking for an upper-bound
+(the ``\lstinline{ldr}'' at \texttt{0x408} in \autoref{emulator}) and looking for an upper-bound
 comparison with a constant value on the register that holds the current case
 number to be executed (\texttt{w1}).  If the comparison is directly followed by
 a jump, than we mark the jump target location as the ``default'' case and set
 the number of cases of the jump table based on the constant of the comparison.
+\autoref{emulator} shows an example of the output of our emulator when analyzing a ``\lstinline{br}''
+indirect jump.
 
 
 \begin{figure}[h]
@@ -1528,8 +1533,8 @@ our symbolic emulator. }
 
 The symbolization of a jump table in memory is done using the assembler's 
 support for simple arithmetic on assembly labels. Since on \texttt{ARM} a jump table
-is no more than a sequence of offsets from a base instruction, we symbolize
-that with differences between assembly label. An example of this can be seen
+is a list of offsets from a base instruction, we symbolize
+that with differences between labels. An example of this can be seen
 in \autoref{omgjmptbl}.
 
 Since the offsets in the symbolized version are calculated with assembly labels,
@@ -1583,24 +1588,24 @@ like in \autoref{omgjmptbl}, we can store \texttt{(.LC418 - .LC410) / 8} to fit
 up to 512 instructions between \texttt{.LC418} and \texttt{.LC410}. The same reasoning
 can be reapplied with higher powers of two. 
 
-However, using a divisor higher than 4 means losing precision in the possible
+However, using a divisor higher than 4 means losing precision in the 
 addresses of the cases we want to represent. Since 4 bytes is the size of each
 instruction, dividing by 4 means that every instruction can be targeted;
-dividing by 8 means that only one every two instructions can be targeted. To
-avoid losing precision over which instruction can be targeted or not, we insert
-\texttt{nop} padding before each case of the jump table in the output assembly
-in order to make every case targetable by an offset, with the amount of nops
+dividing by 8 means that only one every two instructions can be targeted. 
+To avoid having jump table cases not targetable due to the loss of precision, we insert
+\texttt{nop} padding before each case 
+in order to make every case aligned and targetable, with the amount of nops
 depending on how high is the divisor (e.g., dividing by 8 means that each case
 must by 8-byte aligned, so using up to 1 nop before each case; dividing by 16
 means using up to 3 nops, and so on). Since the number of nops inserted depends on 
-alignment, we leave this task to the assembler using the \texttt{.align} directives.
+alignment, we leave this task to the assembler using the ``\lstinline{.align}'' directives.
 
 After changing the divisor, we also need to change the indirect jump calculations in the
 binary's code to match the new shift value. Usually, the offset to be added is multiplied by
-4 using an instruction like \texttt{add x0, x0, w1, sxtb 2} (which shifts left by 2), as
+4 using an instruction like ``\lstinline{add x0, x0, w1, sxtb 2}'' (which shifts left by 2), as
 can be seen in \autoref{emulator}. We change the shift value according to how high we set
 the dividend in the symbolized jump table (the \texttt{add} instruction support shifting left
-up to 4, but we insert a standard \texttt{lsl} instruction before if it's higher than 4). 
+up to 4, but we insert a standard ``\lstinline{lsl}'' instruction before if it's higher than 4). 
 
 An example of this can be found in Listing \ref{enlarged}.
 
@@ -1636,7 +1641,7 @@ An example of this can be found in Listing \ref{enlarged}.
 
 \section{Instrumentation (BASan)}
 The ASan instrumentation was designed to be compatible with the 
-AddressSanitizer libraries provided by Google, \texttt{libasan}. We carefully 
+AddressSanitizer library provided by Google, \texttt{libasan}. We carefully 
 selected shadow memory offsets and sizes to match those included in 
 \texttt{libasan}.  The library will hook on each call to \texttt{malloc} and 
 \texttt{free}, writing in the shadow memory the available bytes that can be 
@@ -1696,7 +1701,7 @@ differences:
 \begin{itemize}
 	\item Missing global variable bounds checking: without the source code, it 
 		is impossible to distinguish boundaries between global variables in 
-		data section. For this reason, checks on global variables are disabled.
+		data section. For this reason, checks on global variables are missing.
 	\item Missing stack variables bounds checking: similar to above, without 
 		source code it is extremely hard to find boundaries between variables 
 		on the stack. Stackframe bounds checking could be easily implemented 
@@ -1728,12 +1733,12 @@ hindering the correct execution of the binary. Then, when inserting the
 instrumentation, we modify the snippets in such a way that they will try to use 
 as many `free' registers as possible, while saving the others on the stack.
 
-Of particular note is the saving of the value of register \texttt{ncvz}, which 
+Of particular note is the saving of the value of register ``\lstinline{nzcv}'', which 
 holds the condition flags in \texttt{aarch64}. This register is always saved 
 and restored at each instrumented location, as all ASan snippets contain a 
 conditional branch for the error checking. 
 
-\todo{If needed, put other optimizations here, like batching}
+%\todo{If needed, put other optimizations here, like batching}
 
 
 %%%%%%%%%%%%%%%%%%%%
@@ -1762,32 +1767,32 @@ To benchmark the performance of rewritten binaries, we used the SPEC CPU 2017
 benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
 \sysname does not (yet) support the symbolization of C++ exceptions. The list of the
 benchmarks can be seen in \autoref{tabularasa}.  All of the benchmarks were run on
-both machines, but on the raspberry some benchmarks were excluded from the results
+both machines, but on the Raspberry some benchmarks were excluded from the results
 as 4GB of RAM were not enough to avoid using swap memory, compromising the
 experiments. The Atlas machine was generously hosted by the
 CloudLab project~\cite{cloudlab} in their Utah data center. 
 
-The benchmarks were compiled with the gcc compiler version 7.5.0 on Ubuntu
+The benchmarks were compiled with the \texttt{gcc} compiler version 7.5.0 on Ubuntu
 18.04. The following command line flags were used to compile the baseline
-benchmark binaries: \texttt{-O3 -fgnu89-inline -fno-strict-aliasing}, in
+benchmark binaries: ``\texttt{-O3 -fgnu89-inline -fno-strict-aliasing}'', in
 addition to the flags to produce position independent executables. 
-The \texttt{-fgnu89-inline} flag uses GNU semantics for inline functions, and
+The ``\texttt{-fgnu89-inline}'' flag uses GNU semantics for inline functions, and
 resolves issues with duplicate symbols errors during the compilation of the
-\texttt{gcc} benchmark.  The \texttt{-fno-strict-aliasing} flag disables GCC's
-aggressive aliasing compilation,and is recommended to be used by the SPEC CPU
+\texttt{gcc} benchmark.  The ``\texttt{-fno-strict-aliasing}'' flag disables GCC's
+aggressive aliasing compilation, and is recommended to be used by the SPEC CPU
 manual~\cite{specaliasing} to avoid problems with the \texttt{perlbench}
 benchmark. 
 
 To demonstrate the scalability of our approach, we rewrite binaries as large as
 the \texttt{gcc} benchmark (\textgreater 10MB).  We evaluate the performance of the
-symbolization engine by running the benchmarks with the binaries of each
-benchmark rewritten by \sysname without adding any kind of instrumentation. We
+symbolization engine by running the benchmarks 
+rewritten by \sysname without adding any kind of instrumentation. We
 then evaluate the performance of our memory sanitization instrumentation pass
 by comparing it against its source based equivalent
-(\texttt{-fsanitize=address} in the compiler flags), and against the equivalent
-functionality implemented using a dynamic instrumentation approach, by using
-Valgrind with the memory sanitization option (\texttt{valgrind
---tool=memcheck}).
+(``\texttt{-fsanitize=address}'' in the compiler flags), and also against memory sanitization
+implemented using a dynamic instrumentation approach, by using
+Valgrind with the memory sanitization option (``\texttt{valgrind
+--tool=memcheck}'').
 
 
 \section{Performance}
@@ -1840,23 +1845,23 @@ Valgrind with the memory sanitization option (\texttt{valgrind
 symbolization process is very small. Detailed results can be found in
 \autoref{labellatabella}.  The average overhead is 0.76\%, in line with other
 state of the art static rewriters~\cite{egalito}.  This kind of overhead is
-probably due to unoptimal realignment of sections and code, as we produce
+in part due to unoptimal realignment of sections and code, as we produce
 position independent assembly without low level optimizations such as cache
 hits maximization. Another important
 factor for the introduced overhead is that each pointer building instruction ``\lstinline{adrp}''
 is symbolized with two instructions (an ``\lstinline{adrp}'' followed by an
-\texttt{add}): so for each global variable access the binary makes the CPU will
+``\lstinline{add}''): so for each global variable access the binary makes the CPU will
 lose a clock cycle (probably less, as many \texttt{ARM} CPUs have hardware optimizations
 for \lstinline{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
 
 Interestingly, at first we used to have substantial overhead from symbolization
-alone.  This was on a early stage of the project, where we used literal pools
+alone.  This was at an early stage of the project, where we used literal pools
 to symbolize global variable pointer constructions, instead of generating
 symbolized pointer constructions ourselves like compilers do, mostly because
 using literal pools was simpler to debug and faster to implement.  However,
 literal pools introduce an additional instruction (a memory load), plus they
-require space in the \texttt{.text} section, reducing cache performance.
-\autoref{slowpools} demonstrates how the much overhead decreased when we
+require space in the \texttt{.text} section for the storage of the pointers, reducing cache performance.
+\autoref{slowpools} demonstrates how much the overhead decreased when we
 switched to symbolized pointer constructions, from an average of 4.12\% to
 0.76\%. 
 
@@ -1916,12 +1921,12 @@ inside measurement error.
 
 In this section we compare the overhead introduced by \sysname's memory
 sanitization instrumentation and the overhead introduced by adding memory
-sanitization during compilation (\texttt{-fsanitize=address}).  
+sanitization during compilation (``\texttt{-fsanitize=address}'').  
 
 An overview of the results can be seen in \autoref{plot1} for the Atlas machine,
 and in \autoref{plot2} for the Raspberry. Both figures show the same pattern: 
 memory sanitization introduces some overhead but the execution time is still comparable
-to source-based instrumentation. However, it can be seen that the Raspberry suffered
+to source-based instrumentation. However, we can see how the Raspberry suffered
 from a slightly higher overhead with instrumentation enabled. We think that one of the
 possible causes of this is that a low-end system like the Raspberry suffers more from
 cache misses than a high-end system (and memory sanitization is a very heavy instrumentation
@@ -1955,7 +1960,7 @@ true for \sysname's memory sanitization instrumentation (``Binary ASAN'' in
 \autoref{labellatabella}): the overhead is larger in programs that frequently
 use memory. 
 
-On average, binary ASAN is slower than source ASAN (119.61\% instead of 84.04\%
+On average, binary ASAN is 19\% slower than source ASAN (119.61\% instead of 84.04\%
 average overhead). The reasons
 behind the slowdown are the following:
 \begin{itemize}
@@ -1964,18 +1969,18 @@ behind the slowdown are the following:
 		determine the safety of certain memory accesses. For this reason, \sysname
 		instruments every single memory access, while source ASAN skips some of them.
 	\item Assembly generation optimizations: \sysname is a relatively simple tool, 
-		and instruments memory accesses with hand-written assembly snippets. While
-		some optimizations were implemented (register savings, batching checks), they
+		and instruments memory accesses by inserting hand-written assembly snippets. While
+		some optimizations were implemented (register savings), they
 		do not even come close to the number and complexity of optimizations passes that
 		standard compilers use when generating machine code. 
 \end{itemize}
 Still, the slowdown with respect to source ASAN is very little compared to
 state of the art tools.  In fact, without source code, the only way of adding
 memory sanitization to a binary is through dynamic instrumentation. We ran the
-benchmarks using a very famous dynamic instrumenter that implements memory
+benchmarks using a famous dynamic instrumenter that implements memory
 sanitization (Valgrind's \texttt{memcheck} tool~\cite{valgrind}), and plotted
 the runtimes in \autoref{plot1} and \autoref{plot2}. The overhead introduced by
-dynamic instrumentation is around 10x the overhead of binary ASAN, depending on
+dynamic instrumentation is an order of magnitude higher than the overhead of binary ASAN, depending on
 the amount of memory accesses of the benchmark. 
 
 \begin{table}
@@ -2004,10 +2009,10 @@ and the original benchmarks compiled with source based ASAN.  }
 
 
 However, it needs to be said that our binary ASAN instrumentation has a few
-shortcomings. First of all, stack variables access is not instrumented.
+shortcomings. First of all, stack variables accesses are not instrumented.
 Secondly, global variable accesses are not instrumented. Both of those are
 caused by the fact that without source code, bounds determination is impossible
-for variables in non-heap memory regions. 
+for variables in memory regions outside of the heap. 
 
 
 \subsection{Optimization: register savings}
@@ -2017,7 +2022,7 @@ at each instrumentation location.
 The impact of this optimization depends on the amount of registers that our static
 analysis determines to be ``free'' at every given instrumentation location. In the best
 case scenario (if no registers need to be pushed to the stack and then restored) 6 less
-instructions are used for the instrumentation.
+instructions are used for the BASan instrumentation.
 \autoref{wowasan} shows an
 example of this optimization on an instrumented 8-byte memory load. 
 
@@ -2211,7 +2216,7 @@ as ours (pointer construction and jump table recovery); however, they do not
 address how they solved the problem of jump table enlargement in the case of
 heavyweight instrumentation.  Unfortunately, we were not able to perform any
 kind of comparison as the latest version available in the public repository
-crashes on any \texttt{aarch64} binary we tried to recompile. We opened an
+crashes on any \texttt{aarch64} binary we tried to rewrite. We opened an
 issue \footnote{\url{https://github.com/columbia/egalito/issues/32}} on their
 public Github repository on November 28, 2020, but it still left unanswered (as of \today).
 
@@ -2257,8 +2262,8 @@ They can either make use of the operating systems' debugging primitives
 (ptrace API in Linux, or the application debugging API in Windows), or
 of a custom loader, like \texttt{PIN}~\cite{pin} or \texttt{DynamorIO}, to
 modify and instrument the target binary at runtime. 
-While they have to solve similar problems when compared to static rewriting
-(such as disassembly, CFG recovery, and instrumentation location), they can
+While they have to solve similar problems compared to static rewriting
+(such as disassembly and CFG recovery), they can
 leverage run-time information that is unavailable to static rewriters.
 For example, a dynamic rewriter is able to know the target of an indirect 
 branch before executing it, since the register values are known at any given
@@ -2270,7 +2275,7 @@ by \texttt{QEMU}.
 
 
 \section{Static binary rewriting}
-We will divide static rewriters in the technique they use to insert
+We will divide static rewriters by the technique they use to insert
 instrumentation in the target binary, namely trampolines, lifting to an
 intermediate representation, and symbolization.
 
@@ -2281,26 +2286,27 @@ works by substituting the instruction that need to be instrumented by a non-cond
 jump that points to the instrumentation. At the end of the instrumentation, another
 non-conditional jump brings the execution back to next instruction of the original code. 
 \texttt{E9Patch} introduces novel techniques to solve the problem of 
-substituting an instruction in a varying-length ISA such as x64 can be hard, and using
-trampolines has the advantage of requiring very low static analysis beforehand. However,
-a large overhead is introduced at each instrumentation location, as two jumps need to be
-executed each time.
+substituting an instruction in a varying-length ISA (such as \textt{x86\_64}). 
+
+Using trampolines has the advantage of requiring very low static analysis
+beforehand; however, a large overhead is introduced at each instrumentation
+location, as two jumps need to be executed each time.
 
 \texttt{BISTRO}~\cite{bistro} is aimed at the rewriting of individual components in an
 executable, and works by \emph{stretching} the binary to make space for the new instrumentation;
-however it still makes use of trampolines to avoid breaking indirect call targets.
+however it still makes use of trampolines (``anchors'') to avoid breaking indirect call targets.
 
 
 \subsection{Static rewriters that lift to IR / full translation}
 Lifting the target binary to an intermediate representation has multiple 
 advantages. First, if the chosen IR is a standardized one (such as the LLVM 
 IR), a wide variety of tools can be used to apply instrumentation and modify
-the lifted IR.  \texttt{McSema}~\cite{mcsema} is a great example of a LLVM IR
+the lifted IR.  \texttt{McSema}~\cite{mcsema} is a great example of an LLVM IR
 lifting approach that supports \texttt{x86\_64} ELF and PE binaries, with 
 support for C++ exceptions and \texttt{aarch64} support in development. The IR produced by \texttt{McSema}
 can be readily fuzzed with \texttt{libFuzzer}, an LLVM-based instrumented
 fuzzer that would normally require the source code. 
-The disadvantages in lifting to an IR are in the fact that this requires very heavy static
+The disadvantages in lifting to an IR are in the fact that the lifting requires very heavy static
 analysis (in fact, \texttt{McSema} uses \texttt{IDAPro} as backend) and some overhead
 can be introduced by unoptimal lifting of the original binary. 
 
@@ -2310,13 +2316,13 @@ In 2015, \texttt{Uroboros}~\cite{uroboros} was the first approach in generating
 it still suffered from classic challenges in static analysis such as relying on
 heuristics to differentiate between scalars and references. Two years later
 \texttt{Ramblr}~\cite{ramblr} significantly improved on \texttt{Uroboros}' approach
-with better heuristics and lesser overhead. In 2020, \sysnameold restricted the
+with better heuristics and less overhead. In 2020, \sysnameold restricted the
 class of target binaries to position-independent ones, finally solving the problem
 of distinction between scalars and references.
 
 \section{Static rewriters aimed at ARM binaries}
 In this section we will focus on static rewriters on the \texttt{ARM} architecture, which have
-to tackle the same challenges with fixed-size instruction sets as we did.
+to tackle the same challenges caused by fixed-size instructions as we did.
 
 \texttt{Repica}~\cite{repica} is one of the most recent static rewriters for both 32-bit and
 64-bit \texttt{ARM} binaries, and uses an instrumentation technique similar to reassembly: instrumentation
@@ -2326,9 +2332,9 @@ detect jump tables similar as ours, and recover pointer construction mechanisms 
 propagation. Their instrumentation however does not utilize optimizations such as register savings, 
 incurring in higher overhead than necessary.
 
-\texttt{Egalito}~\cite{egalito}. is a binary ``recompiler'' targeted
+\texttt{Egalito}~\cite{egalito} is a binary ``recompiler'' targeted
 at C, position-independent ELF binaries with support for both 32-bit and 64-bit x86 and \texttt{ARM}.
-\texttt{Egalito} lifts binaries to a custom IR to insert instrumentation and
+\texttt{Egalito} lifts binaries to a custom IR to insert instrumentation,
 supports a large variety of instrumentation and transformation passes, and has
 a reported similar baseline overhead to \sysname (0.46\% on SPEC CPU2006). Detection of 
 jump tables is done through backwards-slicing; the authors do not specify how
