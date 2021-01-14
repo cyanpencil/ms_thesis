@@ -121,14 +121,15 @@
   backgroundcolor=\color{lgray},  
   tabsize=4,                      
   captionpos=b,                   
-  breaklines=true,               
+  %breaklines=true,               
   breakatwhitespace=false,      
   title=\lstname,              
   keywordstyle=\color{blue},     
   keywordstyle=[2]\color{dblue},     
   keywordstyle=[3]\color{purple},     
   commentstyle=\color{dgray}, 
-  stringstyle=\color{mauve},   
+  stringstyle=\color{orange},   
+  breaklines=false,
   escapeinside={\%*}{*)},     
   columns=fullflexible,
   morekeywords={adrp, add, adr, ldrb, br, uxtw, sxtb, b.eq, b.hi, ldr, movz, ldp, msr, mrs, stp,lsr, ldrsb, ldrsh, cbz},
@@ -246,7 +247,7 @@ up with my constant complaining. Thanks!
 	runtime overhead (between 3x and 10x and more). Static rewriters introduce less overhead, 
 	but they are mostly targeted towards the \texttt{x86} architecture.
 
-	We would like to show that symbolization for ARM binaries 
+	We would like to show that symbolization for \texttt{ARM} binaries 
 	is a viable alternative to existing static approaches, that has less flexibility 
 	(only works on C, position independent binaries) but has
 	negligible overhead. We present 
@@ -296,27 +297,28 @@ up with my constant complaining. Thanks!
 %The eights paragraph discusses your core contribution.
 %This section is usually 3-5 pages.
 
-Mobile environments are ubiquitous but often lack security updates, for
+Mobile environments are ubiquitous but often lack security updates. For
 example, on Android over 60\% of devices are outdated by at least two
 years~\cite{android}. Security testing in mobile environments is extremely
 challenging as vendors often release components as binary-only, i.e., without
 accompanying source code.  Binaries cannot be readily evaluated by security
-analysts, resulting in potentially undiscovered vulnerabilities in this
+analysts, resulting in potentially undiscovered vulnerabilities in these
 binary-only modules, which often run with high privileges and are exposed to
 the network. Binary rewriting is a process that allows insertion of arbitrary code
-(instrumentation) in an already compiled binary without the need to recover its
-source code, allowing the insertion of hardening measures that are able to 
+(instrumentation) in an executable without the need to recover its
+source code, allowing the insertion of hardening measures that can 
 substantially reduce the exploitability in the case of a vulnerability.
 Binary rewriting is also vital to analysts looking for new vulnerabilities,
 as it's an important step in the fuzzing of closed source software. 
 
-Binary rewriters can be split into two main categories: \emph{dynamic} rewriters
-, that inject code into the target executable at run-time, and \emph{static} ones
-, that transform the executable into a new one with the instrumentation already inserted.
-The first kind allow more flexibility, and support a broader range of binaries, but
-they insert noticeable overhead during its execution; the static ones instead have a much
-smaller footprint in execution time but are only applicable on binaries on which the analysis
-without runtime information (static analysis) is successful.
+Binary rewriters can be split into two main categories: \emph{dynamic}
+rewriters , that inject code into the target executable at run-time, and
+\emph{static} ones , that transform the executable into a new one with the
+instrumentation already inserted.  The first kind allow more flexibility, and
+support a broader range of binaries, but they insert noticeable overhead during
+its execution; the static ones instead have a much smaller footprint in
+execution time but are only applicable on binaries on which static analysis
+(the analysis without runtime information)  is successful.
 
 %Binary rewriting allows analysts to work with binary-only modules
 %but existing solutions are faced with severe disadvantages of either high
@@ -324,76 +326,77 @@ without runtime information (static analysis) is successful.
 %solutions.
 
 While there is no shortage of \emph{static} rewriters targeted towards the
-\texttt{x86} architecture, only a few support \texttt{ARM}. In fact, \texttt{ARM} binaries
-require a very different kind of static analysis than \texttt{x86}, and present
-many challenges that are not found on \texttt{x86}. Those challenges derive from the
-fact that the \texttt{ARM} ISA is fixed-size, and all instructions occupy exactly
-4 bytes. Since addresses in the 64 bit space are 8-byte long, they do not fit 
-into a single instruction, and executables must ``craft'' addresses in various
-ways (storing them in memory at compile time, or using arithmetic expressions to 
-construct them). A number of static analysis techniques commonly used on \texttt{x86}
-are not usable anymore on \texttt{ARM} for this very reason.
-There are a number of \emph{dynamic} rewriters that support \texttt{ARM}, and
-they work by running together with the binary to instrument and modifying
-it in real time: this allows them to use powerful dynamic analysis techniques to 
-recover more information about the binary, but as a side effect they introduce
-very large overhead even with very light instrumentation.
+\texttt{x86} architecture, only a few support \texttt{ARM}. In fact,
+\texttt{ARM} binaries require a very different kind of static analysis than
+\texttt{x86}, and present many challenges that are not found on \texttt{x86}.
+Those challenges derive from the fact that the \texttt{ARM} ISA (Instruction
+Set Architecture ) is fixed-size, and all instructions occupy exactly 4 bytes.
+Since addresses in the 64 bit space are 8-byte long, they do not fit into a
+single instruction, and executables must ``craft'' addresses in various ways
+(storing them in a data section at compile time, or using arithmetic
+expressions to construct them). Many static analysis techniques commonly used
+on \texttt{x86} are not usable anymore on \texttt{ARM} for this reason.  There
+are a number of \emph{dynamic} rewriters that support \texttt{ARM}, and they
+work by running together with the binary to instrument and modifying it in real
+time: this allows them to use powerful dynamic analysis techniques to recover
+more information, but as a side effect they introduce large overhead even with
+very light instrumentation.
 
 Introducing only a small overhead onto an instrumented binary is a very desirable feature to 
-have into a binary rewriter, as nowadays the largest use case of binary instrumentation
+have, as nowadays the largest use case of binary instrumentation
 is the injection of fuzzing hooks and memory sanitization checks in a closed 
 source binary to drastically improve the efficiency of modern fuzzing
-engines. Using a static binary rewriter versus a dynamic one can when
+engines. Using a static binary rewriter versus a dynamic one when
 fuzzing can lead to an order of magnitude more executions per second. 
 
-Fuzzing on the \texttt{ARM} architecture has had very little growth when
-compared to \texttt{x86}, and one of the main causes is that the required
-instrumentation passes to fuzz are supported only by heavy dynamic binary
-rewriters, which lead to low fuzzing performances.
+Fuzzing on the \texttt{ARM} architecture has had little growth 
+compared to \texttt{x86}, and one of the main causes is that the 
+instrumentation passes required for fuzzing are supported only by heavy dynamic binary
+rewriters, which lead to low fuzzing performances due to their overhead.
 The fact that \texttt{ARM} became popular only very recently, combined with the 
 difficulty of performing static analysis on it, are the reasons behind the lack
 of advanced static binary rewriters for \texttt{ARM}. In fact, most of the existing
-ones rely on simpler techniques (like \emph{trampolines}) that need only 
-superficial analysis, but are not flexible and incur in very large overhead. 
+ones rely on simpler techniques (like \emph{trampolines}) that require only 
+superficial analysis, but are not flexible and nor efficient.
 
 Static analysis is the core foundation on many state-of-the-art static binary
 rewriters: one of the most recent and successful ones for \texttt{x86\_64} is
 RetroWrite~\cite{dinesh20oakland}. It uses a novel technique called
 \emph{symbolization}, which is the process of transforming an executable back
 to an assembly listing that is \emph{re-assemblable}, where absolute addresses
-are substituted with assembly labels (or \emph{symbols}).  Since all addresses
-are subsituted with labels, adding custom code (instrumentation) or arbitrary
-transformation on existing code is very easy, as the resulting assembly can be
-parsed by a generic off-the-shelf assembler into a new, instrumented
+are substituted with assembly labels (or \emph{symbols}).  Having all addresses
+are substituted with labels makes adding custom code (instrumentation) or arbitrary
+transformation on existing code very easy, as the resulting assembly can be
+parsed by a generic off-the-shelf assembler and assembled into a new instrumented
 executable. 
 
 In this thesis we would like to introduce \sysname, a new, advanced static rewriter 
 for \texttt{ARM64} binaries that builds on the original RetroWrite (from now on
 referred as \sysnameold) and uses the same \emph{symbolization} technique 
-to allow the development of complex and efficient instrumentation and trasformation
-of closed-source binaries. Our work focuses on the development of novel approaches
+to allow the development of complex and efficient instrumentation for
+closed-source binaries. Our work focuses on the development of novel approaches
 to tackle the static analysis challenges presented by \texttt{ARM} executables 
-such as pointer construction detection and jump table enlargement. We also implement
+such as pointer construction symbolization and jump table enlargement. We also implement
 an example instrumentation pass (implementing the same algorithm of Google's
 \emph{AddressSanitizer}, an LLVM compiler pass to sanitize memory accesses) to
 show the ease and efficiency of writing instrumentation using the symbolization
-technique, and compare its performance to demonstrate that the execution time is
+technique, we then measure its performance to demonstrate that the execution time is
 comparable to the original LLVM pass (that requires the source code of the
 binary to instrument, so impossible to apply on binary-only modules.) 
 
 The main challenges we had to tackle were the detection and recovery of pointers,
 that are either stored in a read-only region or more commonly are built through
 a series of arithmetic operations because a single pointer cannot fit into a single
-\texttt{ARM} instruction. This required reverse-engineering of patterns of compiler
-generated code and clever ways to transform said arithmetic sequences of instructions
+\texttt{ARM} instruction. This required reverse-engineering the patterns of code the compiler
+generates and clever ways to transform said arithmetic sequences of instructions
 into symbolized assembly snippets that can support the insertion of arbitrary code in
 between. Another big part of our work focused on the detection, recovery and symbolization
 of jump tables: switch statements on \texttt{ARM} binaries are very different from \texttt{x86}
 (they are stored as a set of offsets from a given base address, not as a sequential list
 of absolute addresses). All the standard heuristics methods that are commonly used
 on \texttt{x86} cannot be used on \texttt{ARM} as the jump tables are indistinguishable
-from random data, so this required the development of new ways to detect them. Furthermore,
-since they are stored \emph{compressed} in memory, they intrinsecally do not support
+from random data, so this required the development of a bare-bones symbolic emulator to detect them. Furthermore,
+since they are stored \emph{compressed} \todo{explain this compressed} in memory, they do not support
 the insertion of large instrumentation. We solved this problem with a new technique called
 \emph{jump table enlargement} which lets us introduced arbitrary-sized instrumentation
 inside a jump table. 
@@ -446,18 +449,19 @@ inside a jump table.
 %instrumentation with the symbolization approach. 
 
 We will show that our binary rewriter incurs in very low overhead through 
-standard CPU benchmarks used by the scientific community to evaluate rewriters.  
+standard CPU benchmarks commonly used to evaluate binary rewriters.  
 We will also show that our implementation scales well to COTS binaries, as the 
 benchmarks include large programs such as \texttt{gcc} and \texttt{perl}.  
 Finally, we also evaluate the performance of our implementation of 
 AddressSanitizer, showing that it is competitive with its source-based 
-counterpart, adding only 30\% additional overhead on top of it. 
+counterpart, adding only 19\% additional overhead on top of it (depending on the
+binary and hardware configuration of the machine). 
 
 Our core contribution consists in the development of the first zero-overhead 
 \texttt{aarch64} static binary symbolizer that scales to large COTS binaries, 
 with key insights in detecting and symbolizing pointer construction mechanisms 
 and compressed jump tables, and an efficient instrumentation pass that 
-retrofits \texttt{aarch64} binaries with ASan.
+retrofits \texttt{aarch64} binaries with AddressSanitizer.
 
 
 
@@ -470,11 +474,11 @@ retrofits \texttt{aarch64} binaries with ASan.
 %This section is usually 3-5 pages.
 
 Here we will provide a summary of the basic notions required to understand the 
-underlying concepts behind \sysname and the problems we faced while developing 
-support to the ARM architecture. 
+underlying concepts behind \sysname and the problems we faced during
+its development.
 
 \section{Binary Rewriting}
-\emph{Binary rewriting} describes the alteration of a compiled program such a
+\emph{Binary rewriting} describes the alteration of a compiled program in such a
 way that the binary under investigation remains executable. It is useful
 in the case some additional functionality needs to be added to a closed-source
 binary, or to perform live changes on an already running executable.
@@ -485,7 +489,7 @@ researched field of computer science, with a number of applications ranging
 from security to software optimization.
 
 In the next subsection we will briefly explain how it works, and then we will
-present the most common applications of binary rewriting. 
+present the most common uses of binary rewriting. 
 
 
 \subsection{Binary rewriting in short}
@@ -494,11 +498,11 @@ its process into four main steps:
 \begin{itemize}
 	\item \emph{Parsing}: Executables are complex formats and are often optimized
 		for speed instead of readability. Separating code, data and metadata in 
-		an executable format is not easy as often all three kinds of information
-		are scattered through the file in different ways. Furthermore, data is often
+		an executable format is not easy: often all three 
+		are scattered through the file in different ways. Furthermore, data is usually
 		\emph{untyped} (there is no type information on global variables), and the
 		boundary between code and data is not always clearly defined as in many 
-		architectures instructions can have variable width. Finally, recovering 
+		architectures instructions have variable width. Finally, recovering 
 		and distinguishing references (pointers) from scalars (constants) is 
 		a problem which was only recently solved on position-independent 
 		executables~\cite{dinesh20oakland}. The purpose of this step is to 
@@ -506,10 +510,10 @@ its process into four main steps:
 		clearly defined structures ready to be analyzed in the next step. 
 	\item \emph{Analysis}: This step focuses on the code of the executable, and on 
 		the recovery of as much information as possible from the raw instructions present
-		in the code sections of the executable. Usually this involves disassembling
+		in the code sections of the executable. Usually this involves the disassembly of
 		the raw instructions to be able to analyze them individually, the study of the
 		structure of the code to split it into functions, and the analysis of the branches
-		of each functions to build the control flow graph (CFG) of each one. Often times
+		of each function to build the control flow graph (CFG). Often times
 		this step also involves the computation of all cross-references (list of pointers
 		to a specific address). At the end of this step the rewriter should have a very
 		precise representation of the executable in a convenient data structure that 
@@ -520,7 +524,7 @@ its process into four main steps:
 		be altered/injected. For example, in the case of a memory sanitization instrumentation
 		pass, the code must locate all memory stores and all memory loads and mark them
 		for insertion of snippets of code that check if the target memory region lies inside
-		an uncorrupted heap chunk.
+		an uncorrupted heap chunk, and abort execution if the check fails.
 	\item \emph{Code generation}: The rewriter now has to make sure that the
 		inserted instrumentation does not break the intended functionality of
 		the original executable, and then patch it or generate a new executable
@@ -538,28 +542,31 @@ The last two steps, ``transformation'' and ``code generation'' are where most of
 research in binary rewriting is done. We will shortly list the most prominent
 techniques that rewriters use to perform those latest two steps:
 \begin{itemize}
-	\item Trampolines: All new instrumentation code is put into a new section in the binary.
+	\item Trampolines: All the instrumentation code is put into a new section in the binary.
 		At every instrumentation point, the rewriter changes an instruction with a branch
-		that redirects execution to the right location inside the instrumentation section. 
-		At the end of the instrumentation, there is always a branch that leads back to 
-		the old location in the executable. This is one of the simplest methods as it does
-		not break any references inside the executable.
+		that redirects execution to the right location inside the new section. 
+		At the end of the instrumentation, there is a branch that leads back to 
+		the old location in the executable. This is one of the simplest methods as 
+		the layout of the code section stays the same and no references or branches
+		are broken inside the executable.
 	\item Direct: At each instrumentation point, code is either overwritten or shifted to 
-		make space for the instrumentation to insert. In the case of a shift, all references
-		must be readjusted to match the displacement of the code.
+		make space for the instrumentation to insert. In the case of a shift,
+		all references and branches must be carefully readjusted to match the
+		displacement of the code.
 	\item Lifting: This approach involves lifting the binary code to an Intermediate
 		Representation (IR) language similar to the one used in compilers such as LLVM.
-		The translation to IR is performed as it usually is a simpler language on which
+		The logic behind it is that IR usually is a simpler language on which
 		it is easier to apply instrumentation to. At the end of the process the IR is 
-		translated back to binary code and a new instrumented executable is generated.
+		compiled back to binary code and a new instrumented executable is generated.
 	\item Symbolization: The process of transforming a binary into a \emph{reassemblable}
 		assembly listing and applying instrumentation on it. Since this is
-		the method used by \sysname, we will go into the details of how it works in 
+		the method used by \sysname, we will go more detail of how it works in 
 		the next section.
 \end{itemize}
 
 
-A more comprehensive report of all the different techniques can be found in a recent survey about binary rewriting~\cite{miller2006binary}.
+A more comprehensive report of all the different techniques can be found in a
+recent survey about binary rewriting by Wenzl et al. ~\cite{binaryrewritingsurvey}.
 
 
 %Usually binary rewriting is used when there is the need to apply a specific compiler
@@ -578,11 +585,11 @@ rewriting are multiple and can be summarized as follows:
 		primitives from one processor architecture to another.  An example of
 		this would be QEMU~\cite{qemu}.
 
-	\item \textbf{Optimization}: In high performance computing domains, having 
+	\item \textbf{Optimization}: In the domain of high performance computing, having 
 		a way to patch subtle things like cache misses or timing anomalies in 
 		very long running tasks without the need to restart the whole program 
 		is of special interest. In such situations, binary rewriting is a 
-		solution for run-time patching, as it is done by DynInst~\cite{dyninst} 
+		solution for run-time patching, as shown by DynInst~\cite{dyninst} 
 		or Frida~\cite{frida}.
 
 	\item \textbf{Profiling}: Having an in-depth look during the execution of 
@@ -591,7 +598,7 @@ rewriting are multiple and can be summarized as follows:
 		like catching memory leaks (e.g., Valgrind~\cite{valgrind}), coverage 
 		information for fuzzing (e.g., AFL-QEMU~\cite{afl}) and more.
 
-	\item \textbf{Hardening}: This is by far the most widespread use case of
+	\item \textbf{Hardening}: This is by far the most popular use case of
 		binary rewriting, as many times we are forced to use software with the
 		absence of source code, with no vendor support, or with deprecated build
 		tools that make recompilation impossible. 
@@ -599,18 +606,18 @@ rewriting are multiple and can be summarized as follows:
 		stack canaries, implementing address layout randomization schemes and
 		memory sanitization to make exploitation substantially harder. Closed
 		source software and lack of vendor support is so widespread that there
-		are already many binary rewriting tools on \texttt{x86} that are mainly
+		are already many binary rewriting tools on \texttt{x86} that are 
 		aimed at hardening executables. Examples of such software are
 		Stackguard~\cite{stackguard} (that supports the insertion of stack canaries) 
 		or \sysnameold~\cite{dinesh20oakland} (that implements a memory sanitization
 		pass to prevent heap corruptions). 
 
 
-		The absence of source code, combined with no 
-		vendor support, or deprecated build tools, could make the use of binary 
-		rewriting necessary to introduce security measures such as the 
-		insertion of stack canaries (e.g., Stackguard~\cite{stackguard}) or 
-		memory sanitization (e.g., \sysname64~\cite{dinesh20oakland}).
+		%The absence of source code, combined with no 
+		%vendor support, or deprecated build tools, could make the use of binary 
+		%rewriting necessary to introduce security measures such as the 
+		%insertion of stack canaries (e.g., Stackguard~\cite{stackguard}) or 
+		%memory sanitization (e.g., \sysname64~\cite{dinesh20oakland}).
 	
 \end{itemize}
 
@@ -627,7 +634,7 @@ rewriting are multiple and can be summarized as follows:
 \section{Dynamic and Static Instrumentation}
 
 In this section we will analyze the difference between the two different 
-approaches that can be taken for binary rewriting, namely \emph{dynamic} and 
+binary rewriting approaches, namely \emph{dynamic} and 
 \emph{static} instrumentation.
 
 \subsection{Dynamic instrumentation} Dynamic rewriters modify and instrument
@@ -636,12 +643,13 @@ executed in a controlled environment side by side with the rewriter engine,
 which patches instructions and fixes references on the go. Sometimes the
 rewriter engine leverages the operating system's primitives to control the
 execution of the target, like using the \texttt{ptrace} system call on Linux,
-but there are notable cases in which the rewriter engine comes with their own
+but there are notable cases in which the rewriter engine comes with its own
 instrumentation runtime (e.g., Dynamo~\cite{dynamo}) or implement a full
 featured virtual machine (e.g., STRATA~\cite{strata}).
 
 The big advantage of dynamic rewriters is the additional information that is 
-only available at run time, like the path that the execution has taken.  
+available at run time, like the path that the execution has taken, or the contents
+of the registers.  
 Furthermore, dynamic rewriters can avoid analyzing the whole binary at once, as 
 they can just focus on the part that is being currently executed, making them 
 scalable to arbitrarily large programs.
@@ -650,22 +658,22 @@ However, the additional runtime information comes at a high performance cost:
 running the rewriter engine alongside the target binary is expensive, and the
 frequent context switches the CPU must perform to execute both processes make
 the performance even worse. The total overhead for an instrumentation pass like
-memory sanitization for a state-of-the-art dynamic rewriter like Valgrind is an
+memory sanitization for a dynamic rewriter like Valgrind is an
 order of magnitude higher ~\cite{dinesh20oakland} than the overhead introduced
 by source-level memory sanitization.
 
 \subsection{Static instrumentation}
 Static rewriters process the target binary \emph{before} execution, and produce
-as output a new binary with all the required instrumentation already there.
+as output a new binary with all the required instrumentation included.
 The overhead introduced is usually very low, and execution speeds are
 comparable to compile-time instrumentation.  Furthermore, static rewriters are
 able to add complex instrumentation that is computationally expensive to
-introduce, as since it is done statically, it won't introduce unnecessary
+introduce, as since it is done statically before execution, it won't introduce unnecessary
 delays at runtime.
 
 Without runtime information, to correctly perform instrumentation static
 rewriters need to rely on complex static analysis, which is inherently
-imprecise and often needs to rely on heuristics. It turns out that the common
+imprecise and often needs to rely on heuristics. The common
 disadvantage of static rewriters is that they do not scale well on large
 binaries or binaries that do not follow standard patterns. In fact, virtually
 no static rewriter supports packed binaries or self-modifying code, as they are
@@ -695,9 +703,9 @@ after new instructions are inserted in the middle of the code. The usefulness of
 symbolization relies in the fact that many existing tools can be applied to 
 insert instrumentation or analyze the symbolized assembly. 
 
-The symbolization approach is usually defined \emph{zero-overhead}, 
+The symbolization approach is usually defined as being \emph{zero-overhead}, 
 as the generated executable does not incur in more overhead other than
-the time it takes to execute the instrumentation inserted (unlike other methods, like
+the time it takes to execute the inserted instrumentation (unlike other methods, like
 trampolines, where for each instrumentation location two additional branches need to
 be executed).
 
@@ -736,7 +744,7 @@ by ramblr~\cite{ramblr} and \sysnameold~\cite{dinesh20oakland}.
 
 \section{Examples of code instrumentation}
 In this section we will go into more detail on a very common use-case of 
-instrumentation, \emph{fuzzing}, and explain what is the basis of 
+instrumentation, \emph{fuzzing}, and explain 
 AdressSanitizer, the instrumentation pass we implemented in the ARM port of 
 \sysname. 
 
@@ -745,7 +753,7 @@ Automatic vulnerability discovery techniques are getting a lot of traction
 lately, mostly because software is getting ever more complex and large, and 
 manual analysis and auditing do not scale. Fuzzing is certainly one 
 of the most interesting automatic vulnerability discovery techniques.  It 
-relies on the pseudo-random generation of test cases to give as input to a 
+relies on the semi-random generation of test cases to give as input to a 
 target binary, trying to find a specific input that makes the binary get into 
 an invalid or undefined state, as it is a good indicator of a possibly 
 exploitable vulnerability. This technique got even more popular after the 
@@ -757,14 +765,14 @@ fuzzing} feature.
 
 Most state-of-the-art fuzzers rely on instrumentation to improve vulnerability 
 discovery, as it makes the fuzzing process much more efficient. In particular,
-some of the most popular instrumentation passes to speed up fuzzing are the following:
+some of the most popular instrumentation passes used to speed up fuzzing are the following:
 \begin{itemize}
 	\item \emph{Coverage information}: Coverage information helps the fuzzing engine
 		by monitoring the execution path taken for each input test case. In this way,
 		the fuzzing engine can generate inputs with the aim of maximizing the amount
 		of code executed by each test case, increasing the probability of finding bugs.
 		Coverage information is commonly obtained by inserting monitoring instrumentation
-		at the start of each function or at before each branch instruction.
+		at the start of each function or before each branch instruction.
 	\item \emph{Memory Sanitization}: This instrumentation
 		pass adds a check before each instruction that reads or writes to memory
 		to verify that the memory access does not result in a stack or heap overflow. 
@@ -779,21 +787,22 @@ memory sanitization checks that can be added to a binary through a compiler
 pass, which can be found in both the \texttt{clang} and \texttt{gcc} family of 
 compilers. This compiler pass helps finding bugs by actively checking for 
 memory corruptions, hooking calls to libc's  \texttt{free} and \texttt{malloc} 
-functions. ASan is not only used by developers to debug their code before 
-releasing to production, but it is also extensively used by fuzzers, as ASan 
-will detect a memory violation as soon as it happens, letting the fuzzer know 
-earlier and with more reliability when a bug was found. 
+functions. ASan is not only used by developers to help debug their code, but
+it is also extensively used by fuzzers, as ASan will detect a memory violation
+as soon as it happens, letting the fuzzer know earlier and with more
+reliability when a bug was found (otherwise, the fuzzer has to wait that
+the memory corruption causes a crash). 
 
 ASan works by introducing a new region of memory called \emph{shadow memory}, 
 with a size of exactly 1/8 of the whole virtual memory available to a process.
 By keeping track of each call to \texttt{malloc} and \texttt{free}, ASan stores 
 in the shadow memory a compressed layout of the valid memory in the original 
 virtual space, and sets up \emph{red zones} to highlight invalid or freed 
-memory, that trigger a security violation as soon as they are accessed. Despite 
-its non-negligible overhead (Around 73\% on average~\cite{asanoverhead}), ASan 
-is widely used thanks to the absence of false-positives, and for its usefulness 
-in detecting memory corruption vulnerabilities which are still extremely 
-popular in C/C++ codebases.
+memory. Those red zones trigger a security violation and abort the process as
+soon as they are accessed. Despite its non-negligible overhead (Around 73\% on
+average~\cite{asanoverhead}), ASan is widely used thanks to the absence of
+false-positives, and for its usefulness in detecting memory corruption
+vulnerabilities which are still commonly found in C/C++ codebases.
 
 
 
@@ -801,58 +810,58 @@ popular in C/C++ codebases.
 
 \section{The ARM architecture}
 We will provide a short summary of what are the main differences between 
-\texttt{x86} and ARM, with particular focus on the ones that proved to be 
+\texttt{x86} and \texttt{ARM}, with particular focus on the ones that proved to be 
 source of non trivial problems during the development of \sysname.
 \begin{itemize}
-	\item \emph{Fixed-size instruction set}: Contrary to \texttt{x86}, the ARM 
+	\item \emph{Fixed-size instruction set}: Contrary to \texttt{x86}, the \texttt{ARM} 
 		instructions are all of the same size, fixed to the value of 4 bytes.  
-		While this is not a problem in itself, it means that a pointer cannot 
-		fit into a single instruction. To store a pointer in a register in ARM, 
+		A consequence of this is that a pointer cannot 
+		fit into a single instruction. To store a pointer in a register in \texttt{ARM}, 
 		there are two main options: the first is using a region of data where 
 		the pointer is hard-coded at compile time, called a \emph{literal 
 		pool}; the second one is building the pointer in a multi-stage fashion 
 		by using arithmetic operations.  While the first one is easier, it is 
 		also less performant, and compilers will always resort to the second 
-		when possible. This makes very hard recovering information about global 
-		variable accesses.
+		when possible. This makes recovering information about global 
+		variable accesses very hard.
 	\item \emph{Jump table compression}: On \texttt{x86}, jump tables are 
 		stored as list of pointers in a data section (usually 
 		\texttt{.rodata}), with one pointer for each case of the jump table.  
-		Instead, on ARM, jump tables are stored as offsets from the base case.  
-		This is because the compiler will try to compress the jump table, and 
-		in most cases a single byte is enough to indicate the offset from the 
-		base case to for each case of the jump table. This leads to problems 
+		Instead, on \texttt{ARM}, jump tables are stored as offsets from the base case.  
+		This is because the compiler compresses the jump table, and 
+		in most cases a single byte is enough to store the offset from the 
+		base case to for each case of the jump table. This is the source of many problems 
 		for static rewriting: first of all jump tables are harder to detect, as 
 		on \texttt{x86} scanning the data sections for arrays of valid 
 		instruction pointers was a quite reliable way of detecting jump tables, 
-		while on ARM they are indistinguishable from random bytes; secondly 
+		while on \texttt{ARM} they are indistinguishable from random bytes; secondly 
 		inserting too much instrumentation between cases of the same jump table 
 		could lead to the offset not fitting into a single byte anymore, and 
 		breaking the whole jump table structure in memory.  Finally, extracting 
-		the number of cases of a jump table is quite harder in ARM, since it is 
+		the number of cases of a jump table is quite harder in \texttt{ARM}, since it is 
 		impossible to scan cases until an invalid pointer is found, as like 
-		stated before, jump table entries in ARM are indistinguishable from 
+		stated before, jump table entries in \texttt{ARM} are indistinguishable from 
 		random bytes.
-	\item \emph{Discontinuities in immediates}: Some ARM instructions, like 
-		\texttt{ADD}, support having immediates as one of the operands.  
-		However, they do not accept a classical range of immediates like in 
+	\item \emph{Discontinuities in immediates}: Some \texttt{ARM} instructions, like 
+		\lstinline{ADD}, support having immediates as one of the operands.  
+		However, they do not accept a standard range of immediates like in 
 		\texttt{x86}, but instead a specific set of values that may not be 
-		continuous.  For example the \texttt{ADD} instruction can use only 
+		continuous.  For example the \lstinline{add} instruction can use only 
 		immediates that can be expressed with a value of 8 bits scaled by a 
-		\texttt{ROR} with a
-		4 bits value.
-	\item \emph{Alignment issues}: The stack pointer register \texttt{sp} must 
+		\lstinline{ror} with a
+		4 bits operand.
+	\item \emph{Alignment issues}: The stack pointer register ``\lstinline{sp}'' must 
 		always be aligned to 16 bytes. Failing to do so will trigger a 
 		\texttt{SIGBUS} error and crash the application.
 	\item \emph{No push/pop}: There are no instructions in \texttt{aarch64} 
 		equivalent to the \texttt{x86} push/pop. Instead, a push is performed 
 		by storing a register on the stack and manually decreasing the stack 
-		pointer, like \verb|str x0, [sp, #-16]!|. Similarly, a pop can be 
-		performed like this \verb|ldr x0, [sp], #16|.
+		pointer, like ``\lstinline{str x0, [sp, #-16]!}''. Similarly, a pop can be 
+		performed like this ``\lstinline{ldr x0, [sp], #16}''.
 
 	\item \emph{Multiple register stores/loads}: The \texttt{aarch64} 
 		architecture supports saving and loading two registers at once from 
-		memory with instructions such as \texttt{stp} and \texttt{ldp}. They 
+		memory with instructions such as ``\lstinline{stp}'' and ``\lstinline{ldp}''. They 
 		are very often used by programmers and compilers thanks to the 
 		performance gain.
 
@@ -864,7 +873,7 @@ source of non trivial problems during the development of \sysname.
 		\texttt{x86} --- and, ultimately, less transistors translate to less 
 		power consumed. 
 
-	\item \emph{Not enough mature tools}: The popularity of ARM CPUs is still 
+	\item \emph{Not enough mature tools}: The popularity of \texttt{ARM} CPUs is still 
 		relatively new and the tooling is not mature enough, as in fact we 
 		found bugs in both the disassembler we chose to use 
 		(Capstone~\cite{capstone}) and the debugger (GDB)
@@ -880,18 +889,18 @@ source of non trivial problems during the development of \sysname.
 %This section is usually 5-10 pages.
 
 
-We will now go over the goals that we designed \sysname according to, explain
-which were the key issues that we had to face due to the quirks of the ARM
+We will now go over the goals that we designed \sysname according to, we will explain
+which were the key issues that we had to face due to the quirks of the \texttt{ARM}
 architecture, and the solutions we adopted to overcome those problems both in
-the \emph{symbolization} and in the \emph{instrumentation} sides of \sysname.
+the \emph{symbolization} and in the \emph{instrumentation} parts of \sysname.
 
 
 \section{Goals}
 
 Our goal is to develop a zero-overhead binary translator for \texttt{aarch64} 
 executables that enables powerful translation and overcomes challenges spawned 
-by the ARM ISA.\@ It should also support COTS software and scale well to large 
-binaries. Finally, its implementation should be modular in such a way as to 
+by the \texttt{ARM} ISA.\@ It should also support COTS software and scale well to large 
+binaries. Finally, its implementation should be modular in order to
 avoid limiting any kind of instrumentation.
 
 
@@ -904,8 +913,8 @@ avoid limiting any kind of instrumentation.
 \end{figure}
 
 \sysname follows the same structure as \sysnameold and is divided into two main
-components: the symbolizer and the instrumentation.  The symbolizer takes care
-of loading and analyzing a binary, but its main job is substituting every
+components: the symbolizer and the instrumentation passes.  The symbolizer takes care
+of parsing and analyzing a binary, substituting every
 reference in the target with assembly labels, plus some minor tasks to keep the
 original functionality of the binary intact. 
 Listing~\ref{diffass}  shows the output of the symbolization process on a
@@ -921,8 +930,11 @@ implemented (BASan), but many more can be easily added.
 
 \subsection{Differences with \sysnameold}
 
-\sysname uses the same approach for the parsing of the executables, although
-with different implementation details to support the \texttt{ARM} architecture (e.g., relocations). The technique to differentiate between references and scalars introduced in \sysnameold is also the same. 
+\sysname uses the same approach as \sysnameold for parsing the executables,
+although with different implementation details to support the \texttt{ARM}
+architecture (e.g., different handling for the relocations). The technique to
+distinguish between references and scalars introduced in \sysnameold is also
+the same. 
 
 Since this document focuses on the new challenges that the \texttt{ARM} architecture introduced, we will not go into details about the above algorithms, and point the reader to the original \sysnameold paper~\cite{dinesh20oakland} for further reference. 
 
@@ -930,7 +942,7 @@ The novelty in \sysname relies in the additional static analysis methods that we
 
 
 \section{Key Issues}
-The outstanding challenges of statically analyzing and instrumenting ARM 
+The outstanding challenges of statically analyzing and instrumenting \texttt{ARM} 
 binaries can be summarized as follows:
 
 \begin{itemize}
@@ -943,23 +955,24 @@ In the following pages we will get into detail for each one of those issues,
 and explain the reasoning behind our solution.
 
 \subsection{Pointer construction}
-The Aarch64 instruction set is defined as \emph{fixed size}, because every 
+The \texttt{aarch64} instruction set is defined as \emph{fixed size}, because every 
 instruction is large exactly 4 bytes. This makes the CPU design simpler,
 helps keeping memory always aligned, and permits the CPU to fetch multiple 
 instructions at once, since decoding is not necessary to determine instruction 
 boundaries. However, despite the many advantages of this characteristic, there 
 are some drawbacks too, including not being able to store a pointer in a single 
-instruction (as pointers have a size of 8 bytes). The Aarch64 ISA provides two 
+instruction (as pointers have a size of 8 bytes). The \texttt{aarch64} ISA provides two 
 main solutions to this problem. 
 
 The first one consists in storing the pointers in a special read-only region of 
 memory, called a \emph{literal pool}, and then load those pointers into a 
-registers using the special construct \texttt{ldr <reg>, =pointer}, a 
+registers using the special construct ``\lstinline{ldr <reg>, =pointer}'', a 
 pseudo-instruction that the assembler will translate with the correct memory 
 address once \texttt{pointer} has been stored in a literal pool.  Since all 
-\emph{ldr} instructions are PC-relative, and since there are 21 bits available 
-to store the offset from the PC, the assembler will store \emph{pointer} in a 
-literal pool which is in the $\pm$ 1MB range of the \texttt{ldr} instruction.  
+``\lstinline{ldr}'' instructions are PC-relative, and since the
+``\lstinline{ldr}'' instruction keeps 21 bits available to store the offset
+from the PC, the assembler will store \emph{pointer} in a literal pool which is
+in the $\pm$ 1MB range of the ``\lstinline{ldr}'' instruction.  
 While this is a simple and straightforward approach, very useful in the case of 
 hand-written assembly, this requires an additional memory access that may 
 impact performance in the long run. Furthermore, the assembly will fail if it 
@@ -967,37 +980,40 @@ is not possible to store a literal pool in the given range, such as in the case
 of a function larger than 2MB.\@ In that case, it is up to the programmer to 
 find a suitable spot for the literal pool, by manually specifying its location 
 with the \texttt{.ltorg} assembly directive. It is often recommended to store 
-literal pools directly after non-conditional jumps to avoid executing 
-them~\cite{literalpools}.
+literal pools directly after non-conditional jumps to avoid stepping over 
+them during execution~\cite{literalpools}.
 
 The second solution is to build pointers using multiple instructions and basic 
-arithmetic primitives. Aarch64 provides instructions such as \texttt{adrp 
-<reg>, pointer}, which loads the base page of a pointer into a register. It is 
+arithmetic primitives. \texttt{aarch64} provides instructions such as 
+``\lstinline{adrp <reg>, pointer}'',
+which loads the base page of a pointer into a register. It is 
 a PC-relative instruction, and targets pointers in the $\pm$ 4GB range.  In 
-other words, the \texttt{adrp} instruction can point only to memory locations 
+other words, the ``\lstinline{adrp}'' instruction can point only to memory locations 
 that are 4KB aligned. Usually the instruction can be followed by an 
-\texttt{add}, a \texttt{sub} or an offset-based load such as \texttt{ldr 
-<register>, [<base\_page>, offset]}. This second way, while more contrived and 
-certainly harder to read, is faster than the first one as it does not require a 
+``\lstinline{add}'', a ``\lstinline{sub}'' or an offset-based load such as 
+``\lstinline{ldr <register>, [<base_page>, offset]}''. 
+This second way, while more contrived and 
+harder to read, is faster than the first one as it does not require a 
 memory access, and also often benefits from custom hardware optimizations (such 
-as in the Cortex A72, one of the most common ARM 
+as in the Cortex A72, one of the most common \texttt{ARM} 
 CPUs~\cite{pointeroptimizations}). 
 
 \subsubsection{The global variable problem}
-For the reasons stated above, compilers generally use the second option, 
+For the reasons stated above, compilers generally use pointer constructions
+instead of literal pools when the code needs to access a global variable, 
 preferring performance over assembly readability. Having each pointer value 
 separated in two different instructions makes the static analysis of a binary 
 substantially harder. Furthermore, compiler optimizations frequently exacerbate 
-the problem, by reusing parts of some pointer values to build new ones, or 
+the difficulty of analysis by reusing parts of some pointer values to build new ones, or 
 reordering instructions around in such a way that a pointer can be built on two 
 instructions which are kilobytes away from each other. In some extreme cases, 
 by enabling the \texttt{-O3} optimizations, we found instances of pointers 
 built on two instructions that were on different functions, due to the compiler 
 optimizing a macro in the C source code. 
 
-An important factor to note is that this behaviours happens exclusively when 
-accessing \emph{global variables}, since all code pointers and local variables 
-are reachable through a single pc-relative instruction. 
+%An important factor to note is that this behaviours happens exclusively when 
+%accessing \emph{global variables}, since all code pointers and local variables 
+%are reachable through a single pc-relative instruction. 
 
 In the symbolization process (that will be explained in detail later), we need 
 to know the value of every pointer used in the program, in order to correct it 
@@ -1012,13 +1028,13 @@ At first, some basic static analysis is performed on the binary, in order to
 recover functions, control flow, basic blocks and disassembly of the 
 \texttt{.text} section. After this, we scan the disassembly for each possible 
 instance of pointer building in the binary. After analyzing common compiler 
-patterns, we found out that the \texttt{adrp} instruction (which loads the base 
+patterns, we found out that the ``\lstinline{adrp}'' instruction (which loads the base 
 page address of a pointer) is an indicator of a possible start of a pointer 
 building process. 
 
 After collecting all the possible instances of pointer building, the next step 
 is to find out the final pointer value of each one. This turned out to be an 
-extremely difficult task, as we soon found out that there are infinitely many 
+extremely difficult task, as we soon found out that there are too many 
 ways of how a pointer can be built. We implemented a pattern-matching solution 
 at first, trying to detect common compiler patterns for pointer building; while 
 we correctly found out the value of the vast majority of pointers, a single 
@@ -1027,34 +1043,36 @@ binaries of large sizes, as we inevitably failed to parse at least one or two
 edge-cases.
 
 We later shifted to a different approach: instead of trying to find exact value 
-of a pointer by pattern matching, we take the set of all possible values a 
-pointer could have and exclude wrong values until possible. Over 90\% of the 
-times, this approach leaves only a single value. The rest of the times, only 
-two or three values remain, for which we use the old pattern-matching solution 
-to understand which of those is the correct one. 
+of a pointer by pattern matching, we take the set of all possible sections a 
+pointer could have and exclude wrong values until possible. Over 99\% of the 
+times, this approach leaves only a single section. We then need to symbolize only the
+initial ``\lstinline{adrp}'' and keep the offsets from the relevant section
+exactly the same as they were in the original binary to make sure that any pointer
+built with that ``\lstinline{adrp}'' will resolve correctly. The rest of the times, we fall 
+back to the old pattern matching solution. 
 
 This final solution scales really well, as proved by the fact that we rewrote 
 very large binaries and successfully ran them through long benchmarks. For more 
 details on how the exclusion algorithm works, see the next chapter, 
-Implementation.  
+``Implementation''.  
 
 
 \subsection{Jump table target recovery}
-There is a big difference in how jump tables in ARM are implemented compared to 
+There is a big difference in how jump tables in \texttt{ARM} are implemented compared to 
 \texttt{x86}. In fact, in \texttt{x86}, a jump table is represented through a 
 list of code pointers in the \texttt{.rodata} section. The assembly generated 
 by the compiler will simply load the pointer from the list indexed by the 
-number of the case that is going to be executed. 
+number of the case that is going to be executed, and jump to it. 
 
-On ARM, things are different: jump tables are stored as a list of 
+On \texttt{ARM}, things are different: jump tables are stored as a list of 
 \emph{offsets} from the base case (case number 0) in memory. The compiler 
 generates assembly that fetches the correct offset based on the case number 
 from the list in memory, adds the offset to the base case, and jumps to the 
 resulting value. Listing~\ref{lst:jmptbl} shows an example of jump table access 
 in \texttt{aarch64}. The first two instructions build a global pointer to where 
 the jump table is stored in memory. In line 3 the offset to the corresponding 
-case is loaded into register \texttt{w1}, and then later added to the base case 
-\texttt{x0} on line 5. 
+case is loaded into register ``\lstinline{w1}'', and then later added to the base case 
+``\lstinline{x0}'' on line 5. 
 
 
 \begin{lstlisting}[float,floatplacement=H,label={lst:jmptbl},caption={Example of a jump table in \texttt{aarch64}},numbers=left]
@@ -1077,7 +1095,7 @@ to store each case.
 \subsubsection{Detection of jump tables}
 The first problem we had to face was the discovery of jump tables. While they 
 have a very distinct pattern (a load from memory, followed by some arithmetic, 
-and then an indirect jump), many other constructs share similar patterns (like 
+and then an indirect jump), many other constructs share similar patterns (e.g., 
 using a callback in a struct). We found out that a reliable way of detecting 
 them is by backward-slicing every time the disassembler encountered an indirect 
 jump, and then verifying if the value of the register used for the indirect 
@@ -1090,17 +1108,17 @@ pseudo-emulation engine that steps backwards from a given instruction,
 following control flow and building step by step the resulting expression, 
 similar to what a dumbed-down symbolic executor would output. The 
 pseudo-emulation engine is limited, supports circa 20 instructions, as 
-emulating ARM was out of the scope of the project and we only needed it for 
+emulating \texttt{ARM} was out of the scope of the project and we only needed it for 
 jump table detection. A detailed explanation of how it works can be found in 
 the next chapter.
 
 \subsubsection{Detection of jump tables size}
-Another problem that quickly arose from the peculiarities of ARM jump tables is 
+Another problem that quickly arose from the peculiarities of \texttt{ARM} jump tables is 
 that it is much harder to estimate the number of cases that a jump table 
 supports, compared to \texttt{x86}. In fact, in \texttt{x86}, simple heuristics 
-such as scanning memory for contiguous sections of valid instruction pointers 
-until an invalid one is found can go a long way. However, as stated before, in 
-ARM jump tables are indistinguishable from random bytes, so it is impossible to 
+such as scanning memory for continuous sections of valid instruction pointers 
+until an invalid one is found can be a valid heuristic. However, as stated before, in 
+\texttt{ARM} jump tables are indistinguishable from random bytes, so it is impossible to 
 use heuristics to understand the bounds of a particular jump table in memory.
 
 We found that backward slicing is again a robust solution here too. After 
@@ -1112,7 +1130,7 @@ register, bounding the number of cases to an absolute number, turned out to be
 a very reliable solution.  
 
 \subsection{Enlarging jump tables}
-Another problem spawned from how jump tables are represented in ARM comes up 
+Another problem spawned from how jump tables are represented in \texttt{ARM} comes up 
 when instrumenting a function that contains a jump table. In fact, it is very 
 likely that adding too much instrumentation inside a single case could 
 \emph{overflow} one of the offsets that stored its distance from the base case.
@@ -1120,7 +1138,7 @@ Especially when maximum compression is used and offsets are stored in a single
 byte, it is very common to overflow multiple of them even with light 
 instrumentation. 
 
-This was one of the harder problems to fix, and we considered the following 
+This was one of the hardest problems to fix, and we considered the following 
 solutions:
 \begin{itemize}
 	\item Expand the jump table in memory. Enlarge the \texttt{.rodata} section 
@@ -1137,7 +1155,7 @@ solutions:
 		instruction is 4 bytes long, and it would not make sense to point 
 		inside an instruction. In fact, in Listing~\ref{lst:jmptbl}, line 5, we 
 		can see how the offset is shifted by 2 to the left (so multiplied by 
-		4). This is automatically done by the compiler. However, we can use the 
+		4). However, we can use the 
 		same technique the compiler uses and store offsets divided by 8, 16 or 
 		more, and changing how much the offset is shifted to the left before 
 		being used, thus enabling us to store larger differences in a single 
@@ -1157,7 +1175,7 @@ which is a very desirable property in binary rewriting.
 
 \subsection{Control Flow broken by instrumentation}
 When adding substantial amount of instrumentation to a binary, some pc-relative 
-branches can break, like the instruction \texttt{cbz}, which cannot jump to 
+branches can break, like the instruction ``\lstinline{cbz}'', which cannot jump to 
 addresses farther than 1MB\@. 
 
 In this cases we fix the relevant instruction by making them point to a some 
@@ -1173,7 +1191,7 @@ We designed \sysname to support any kind of instrumentation, without
 sacrificing performance and functionality. We realized though that many 
 different kinds of instrumentation require some intermediate calculations to be 
 saved in registers. This was causing noticeable overhead in the 
-instrumentation, as registers needed to be saved on the stack and restore in 
+instrumentation, as registers needed to be saved on the stack and later restored at
 every instrumented location. 
 
 To avoid this additional overhead, we implemented a static analysis of register 
@@ -1215,26 +1233,26 @@ approach to tackle it.
 \subsubsection{Detection and recovery of pointers}
 
 Standard compilers (clang, gcc) that target \texttt{aarch64} use a common 
-pattern for building pointers: an \texttt{adrp} instruction, loading the page 
-of the destination address, and then either an \texttt{add} or similar arithmetic 
+pattern for building pointers: an ``\lstinline{adrp}'' instruction, loading the page 
+of the destination address, and then either an ``\lstinline{add}'' or similar arithmetic 
 instruction to fix the offset inside the page, or a memory operation like 
-\texttt{ldr} or \texttt{str} that include the offset inside the page 
-(e.g., \texttt{ldr x0, [x1, 256]}).
+``\lstinline{ldr}'' or ``\lstinline{str}'' that include the offset inside the page 
+(e.g., ``\lstinline{ldr x0, [x1, 256]}'').
 
 We implemented two different approaches and combined them together to 
 successfully recover pointers in \texttt{aarch64} binaries.
 The first one is based on pattern matching. We first build a list of 
-possible pointer building locations, enumerating all instances of the \texttt{adrp} 
-instruction. Next, we find all \texttt{add}, \texttt{ldr}, or 
-\texttt{str} instructions (or their variants) that use the register that was 
-partially built with the \texttt{adrp}, and try to recover the original
+possible pointer building locations, enumerating all instances of the ``\lstinline{adrp}'' 
+instruction. Next, we find all ``\lstinline{add}'', ``\lstinline{ldr}'', or 
+``\lstinline{str}'' instructions (or their variants) that use the register that was 
+partially built with the ``\lstinline{adrp}'', and try to recover the original
 pointer by emulating the arithmetics involved in those instructions.
 This approach alone was not enough because of the following 
 difficulties:
 
 \begin{itemize}
-	\item Multiple pointers built with the same \texttt{adrp}:
-		\autoref{pointers} shows how sometimes the same \texttt{adrp} page
+	\item Multiple pointers built with the same ``\lstinline{adrp}'':
+		\autoref{pointers} shows how sometimes the same ``\lstinline{adrp}'' page
 		loading instruction is used for multiple pointer constructions,
 		sometimes very far away from each other
 	\item Moving base page register: another difficulty was that sometimes the 
@@ -1246,7 +1264,7 @@ difficulties:
 		\autoref{pointers3}
 \end{itemize}
 
-\begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \texttt{adrp} instruction}]
+\begin{lstlisting}[float,floatplacement=H,label=pointers,caption={Example of multiple pointers built from the same \lstinline{adrp} instruction}]
 adrp x0, 0xab0000
 add  x1, x0, 256   ; pointer 0xab100
 ldr  x2, [x0, 512] ; pointer 0xab200
@@ -1270,7 +1288,7 @@ add  x3, x3, 512   ; pointer 0xab200
 
 We implemented a light data flow recovery algorithm that statically analyzed
 the control flow and the stack usage of a given function, following around the
-register used for the \texttt{adrp} and checking for its usage, to address all
+register used for the ``\lstinline{adrp}'' and checking for its usage, to address all
 the difficulties stated above. However, it is particularly hard to support
 every single edge case, and missing a single pointer symbolization is fatal and
 will cause a crash when the pointer is dereferenced (which sometimes happens a
@@ -1282,31 +1300,31 @@ completely symbolize all pointers and failed on large binaries.
 Our second approach took advantage of the fact that \sysname does not 
 instrument data sections, and the vast majority of global variables point to
 a data section. Instead of trying to parse the pointer building patterns, we try to
-guess which section of the original binary an \texttt{adrp} could be pointing
-to. Since the \texttt{adrp} loads a base page, and a page offset is added, the
+guess which section of the original binary an ``\lstinline{adrp}'' could be pointing
+to. Since the ``\lstinline{adrp}'' loads a base page, and a page offset is added, the
 sections that can be addressed by a single pointer construction are those that
-overlap the \texttt{adrp} address with a $\pm$ 1 KB range.\@ Since all sections except
+overlap the ``\lstinline{adrp}'' address with a $\pm$ 1 KB range.\@ Since all sections except
 \texttt{.text} are not instrumented, if we are able to narrow down the possible
 target of a pointer construction to a single section, we can symbolize the
 pointer by just adjusting the starting 
-\texttt{adrp} to correctly address the same symbolized section as in the 
-original binary, since offsets used by \texttt{add} or \texttt{ldr} will stay 
+``\lstinline{adrp}'' to correctly address the same symbolized section as in the 
+original binary, since offsets used by ``\lstinline{add}'' or ``\lstinline{ldr}'' will stay 
 the same.
-For example, if we encounter the instruction \texttt{adrp x0, 0xab000} and the
+For example, if we encounter the instruction ``\lstinline{adrp x0, 0xab000}'' and the
 only section close enough is the \texttt{.bss} that starts at address
-\texttt{0xab256}, we can symbolize every pointer construction on \texttt{x0} by
-changing the above \texttt{adrp} to \texttt{ldr x0, =(.bss - 256)}.
+\texttt{0xab256}, we can symbolize every pointer construction on ``\lstinline{x0}'' by
+changing the above ``\lstinline{adrp}'' to ``\lstinline{ldr x0, =(.bss - 256)}''.
 
 
 
 This second approach is more stable, as it does not
 incur in any of the problems stated above. However, it was not always
 applicable, as especially in smaller binaries multiple sections could be in the
-$\pm$ 1 KB range from the \texttt{adrp} destination address; in that case, we
+$\pm$ 1 KB range from the ``\lstinline{adrp}'' destination address; in that case, we
 used some simple data flow analysis to exclude as many sections as possible.
-We found out that in around 99\% of cases we are able to use this \texttt{adrp}-adjusting
+We found out that in around 99\% of cases we are able to use this ``\lstinline{adrp}''-adjusting
 approach without needing to do any heuristics at all. In the case we are not able
-to determine which single section the \texttt{adrp} is pointing to, we fall back
+to determine which single section the ``\lstinline{adrp}'' is pointing to, we fall back
 to the first pattern matching based approach. 
 
 
@@ -1345,9 +1363,9 @@ access each time; secondly, literal pools occupy precious space in the
 
 To avoid the overhead introduced by the usage of literal pools, we decided to
 use pointer construction ourselves. The symbolization of a pointer construction
-is composed of two parts: the symbolized \texttt{adrp} base page loading and
-the symbolized \texttt{add} for the page offset. An example of such process can
-be found in Listing \ref{lst:construction}. The \texttt{adrp} is symbolized by just
+is composed of two parts: the symbolized ``\lstinline{adrp}'' base page loading and
+the symbolized ``\lstinline{add}'' for the page offset. An example of such process can
+be found in Listing \ref{lst:construction}. The ``\lstinline{adrp}'' is symbolized by just
 substituting its argument with the symbolized counter part.  The page offset part,
 instead, is symbolized through a special assembler directive that evaluates to the
 last 12 bits of the specified assembly label (and 12 bits are enough to specify
@@ -1446,7 +1464,7 @@ Our algorithm to detect a jump table pattern works as follows:
 
 To reverse-emulate every path that leads to the indirect call, we implemented a
 very limited \texttt{aarch64} symbolic instruction emulator. It supports around
-20 ARM instructions (all those that are common in jump table constructs, plus
+20 \texttt{ARM} instructions (all those that are common in jump table constructs, plus
 arithmetic instructions and a few memory-related ones).  A very simple example of the
 output of this emulator can be found in \autoref{emulator} (jump table constructs are 
 often more nuanced and interleaved with other instructions).
@@ -1509,7 +1527,7 @@ our symbolic emulator. }
 \subsection{Jump Table symbolization}
 
 The symbolization of a jump table in memory is done using the assembler's 
-support for simple arithmetic on assembly labels. Since on ARM a jump table
+support for simple arithmetic on assembly labels. Since on \texttt{ARM} a jump table
 is no more than a sequence of offsets from a base instruction, we symbolize
 that with differences between assembly label. An example of this can be seen
 in \autoref{omgjmptbl}.
@@ -1724,7 +1742,7 @@ conditional branch for the error checking.
 
 
 In this section we validate the claims that we made earlier by performing experiments.
-We show that \sysname can symbolize and instrument ARM binaries with the performance of
+We show that \sysname can symbolize and instrument \texttt{ARM} binaries with the performance of
 source based instrumentation without compromises on its scalability.
 
 \section{Setup and Hardware} 
@@ -1825,11 +1843,11 @@ state of the art static rewriters~\cite{egalito}.  This kind of overhead is
 probably due to unoptimal realignment of sections and code, as we produce
 position independent assembly without low level optimizations such as cache
 hits maximization. Another important
-factor for the introduced overhead is that each pointer building instruction \texttt{adrp}
-is symbolized with two instructions (an \texttt{adrp} followed by an
+factor for the introduced overhead is that each pointer building instruction ``\lstinline{adrp}''
+is symbolized with two instructions (an ``\lstinline{adrp}'' followed by an
 \texttt{add}): so for each global variable access the binary makes the CPU will
-lose a clock cycle (probably less, as many ARM CPUs have hardware optimizations
-for \texttt{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
+lose a clock cycle (probably less, as many \texttt{ARM} CPUs have hardware optimizations
+for \lstinline{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
 
 Interestingly, at first we used to have substantial overhead from symbolization
 alone.  This was on a early stage of the project, where we used literal pools
@@ -2297,11 +2315,11 @@ class of target binaries to position-independent ones, finally solving the probl
 of distinction between scalars and references.
 
 \section{Static rewriters aimed at ARM binaries}
-In this section we will focus on static rewriters on the ARM architecture, which have
+In this section we will focus on static rewriters on the \texttt{ARM} architecture, which have
 to tackle the same challenges with fixed-size instruction sets as we did.
 
 \texttt{Repica}~\cite{repica} is one of the most recent static rewriters for both 32-bit and
-64-bit ARM binaries, and uses an instrumentation technique similar to reassembly: instrumentation
+64-bit \texttt{ARM} binaries, and uses an instrumentation technique similar to reassembly: instrumentation
 can be inserted both before and after an instruction, and relative jumps are carefully adjusted
 to keep control flow and references exact. The authors use a backwards-slicing technique to 
 detect jump tables similar as ours, and recover pointer construction mechanisms with data-flow
@@ -2309,7 +2327,7 @@ propagation. Their instrumentation however does not utilize optimizations such a
 incurring in higher overhead than necessary.
 
 \texttt{Egalito}~\cite{egalito}. is a binary ``recompiler'' targeted
-at C, position-independent ELF binaries with support for both 32-bit and 64-bit x86 and ARM.
+at C, position-independent ELF binaries with support for both 32-bit and 64-bit x86 and \texttt{ARM}.
 \texttt{Egalito} lifts binaries to a custom IR to insert instrumentation and
 supports a large variety of instrumentation and transformation passes, and has
 a reported similar baseline overhead to \sysname (0.46\% on SPEC CPU2006). Detection of 
@@ -2320,7 +2338,7 @@ Nor \texttt{egalito} neither \texttt{repica} address the problem of jump table e
 in the case of heavy-weight instrumentation like memory sanitization.  Even though it is older, \texttt{RevARM}~\cite{revarm} is the only one that supports resizing of jump tables to insert large instrumentation; however
 \texttt{RevARM} \emph{stretches} the jump table to make space for larger offsets, instead of multiplying the
 already existings offsets and keeping the jump table of the same size as we do. Also, \texttt{RevARM} only supports
-32 bit ARM binaries. 
+32 bit \texttt{ARM} binaries. 
 
 To the best of our knowledge,
 no other static rewriter for \texttt{aarch64} that efficiently supports heavy-weight instrumentation
@@ -2383,14 +2401,14 @@ such as AddressSanitizer has been proposed, other than this study. \todo{Maybe a
 \setlength{\parindent}{0cm}
 \hangindent=0.7cm \textbf{Support for more source languages}: For now, 
 \sysname supports only binaries compiled from the C language, both for the 
-\texttt{x86} and the ARM implementation. The easiest addition would be to add 
+\texttt{x86} and the \texttt{ARM} implementation. The easiest addition would be to add 
 support for C++ by expanding the analysis capabilities of \sysname to support 
 exception tables too, but many more languages could be supported in the future. 
 
-\hangindent=0.7cm \textbf{Support for kernel space binaries}: Right now the ARM 
+\hangindent=0.7cm \textbf{Support for kernel space binaries}: Right now the \texttt{ARM} 
 port of \sysname supports only userspace binaries, contrary to the 
 \texttt{x86} version that supports linux kernel modules too. The kernel version 
-of \sysname\_ARM would prove to be particularly interesting as it would open 
+of \sysname would prove to be particularly interesting as it would open 
 new ways to efficiently fuzz Android kernel modules.
 
 \hangindent=0.7cm \textbf{Support for more executable formats/operating 
@@ -2400,12 +2418,12 @@ require too much effort. This would also be interesting as Windows and MacOS
 present way more closed-source modules compared to Linux.
 
 \hangindent=0.7cm \textbf{More instrumentation passes}: While right now we 
-implemented only the AddressSanitizer instrumentation in the ARM port of
+implemented only the AddressSanitizer instrumentation in the \texttt{ARM} port of
 \sysname, the design of \sysname is modular and adding new instrumentation 
 passes or new mitigations should be easy. To name a few, the interesting ones would be:
 \begin{itemize}
 	\item Shadow stack (return address protection)
-	\item Control flow authentication using ARM pointer authentication 
+	\item Control flow authentication using \texttt{ARM} pointer authentication 
 		(hardware-assisted)
 	\item Coverage-guidance for fuzzing
 \end{itemize}
@@ -2417,18 +2435,18 @@ passes or new mitigations should be easy. To name a few, the interesting ones wo
 %%%%%%%%%%%%%%%%%%%%
 
 
-In summary, we develop the ARM architecture implementation of the \sysname 
+In summary, we develop the \texttt{ARM} architecture implementation of the \sysname 
 project, a scalable static rewriter for linux C binaries.  \sysname enables 
 targeted application of static instrumentation where no source code is 
 available, such as proprietary binaries, inline assembly, or code generated by 
 a deprecated compiler.  We also present an example instrumentation pass on top 
 of the symbolization engine, AddressSanitizer, particularly useful for fuzzing 
 purposes. We present new solutions to problems arising from the peculiarities 
-of the ARM architecture such as the fixed-size instruction set, global variable 
+of the \texttt{ARM} architecture such as the fixed-size instruction set, global variable 
 accesses and jump table instrumentation. We show that the total overhead of the 
 symbolization and the instrumentation pass are competitive with source based 
 AddressSanitizer.  Our work shows that \sysname's original approach is not 
-limited to the \texttt{x86} architecture, but can be applied to the ARM 
+limited to the \texttt{x86} architecture, but can be applied to the \texttt{ARM} 
 architecture and more.
 
 
