@@ -169,10 +169,11 @@
 \begin{abstract}
 
 
+\thispagestyle{empty}
 \vspace*{4cm}
 This thesis was developed with the guidance of prof.Mathias Payer and the
 	HexHive research group at EPFL, and under the remote supervision of prof.
-	Kenneth Paterson at ETH.
+	Kenneth Paterson at ETH. \todo{EPFL logo}
 \end{abstract}
 
 
@@ -199,29 +200,28 @@ up with my constant complaining. Thanks!
 \renewcommand{\abstractname}{Acknowledgments}
 \begin{abstract}
 	I would like to thank my advisor, Prof. Mathias Payer, for his support,
-	guidance, and for trusting me by assigning me this inspiring project.  I
-	admire him a lot and I wish all the best for him, and in particular I hope
+	guidance, and for assigning me this inspiring project.  I
+	wish all the best for him, and in particular I hope
 	that I can work on many other projects with him.
 	
 	I would also like to thank his research group, HexHive, as I always found
 	myself very welcome there, even if I could visit them only once a week.  
 	Those have been six very happy months in which I learned quite a lot of 
 	things, and I have to thank prof. Prof. Payer and his doctorate students 
-	and researches for it. I wish them all to have a very succesfull career, 
-	and I hope we can continue to work together in the future!
+	for it. I hope we can continue to work together in the future!
 	
 	Special thanks goes to my family and my friends in Rome. Their support was
-	always available, and it has always been a huge pleasure to visit them once
+	always available, and it has been a huge pleasure to visit them once
 	in a while in Italy. I also need to thank my S.O. Giulia, I felt she was
 	always behind my back, keeping a good check on my mental sanity during the
-	worst times of the outbreak. My roommates too, Matteo and Filippo, deserve
-	a mention here, as their patience and their rubber duck debugging skills
-	proved to be fundamental during some nasty debugging sessions.
+	worst times of the outbreak. My roommates Matteo and Filippo deserve
+	a mention here too, as their patience and their rubber duck debugging skills
+	proved to be fundamental during some nasty bug-hunting sessions.
 
-	Finally, I would also like to mention my CTF team, Flagbot, that made me 
-	spend so many weekends without going out but ultimately lead me to meet so 
-	many new interesting people, and the teams I had played with occasionally, 
-	namely polyglots and TRX. Thanks!
+	Finally, I would also like to mention my CTF team, Flagbot, and the teams I
+	had played with occasionally, namely polyglots and TRX, that made me 
+	spend so many weekends staying at home but ultimately led me to meet so 
+	many new interesting people. Thanks!
 \end{abstract}
 
 \clearpage
@@ -230,10 +230,7 @@ up with my constant complaining. Thanks!
 	Closed source programs are particularly hard to audit for vulnerabilities.
 	Moreover, it is often the case that modern security measures and
 	mitigations are available only as compiler passes that require possession
-	of the source code. Even if there were good recent attempts
-	\footnote{\url{https://www.pine64.org/pinephone/}}
-	\footnote{\url{https://system76.com/}}
-	\footnote{\url{https://puri.sm/products/}}
+	of the source code. Even if there were good recent attempts~\cite{pine64}~\cite{system76}~\cite{purism}
 	at completely avoiding usage or closed source libraries of modules that run
 	at privileges higher than we might want (e.g., manufacturer specific kernel
 	modules \cite{androidclosed})
@@ -244,23 +241,23 @@ up with my constant complaining. Thanks!
 	Many existing tools were developed to improve the auditability of closed
 	source programs, especially aimed at helping the fuzzing process, with
 	approaches such as implementing AddressSanitizer (a compiler pass only
-	available with the source code) through dynamic instrumentation. However,  
+	applicable when the source code is available) through dynamic instrumentation. However,  
 	even state-of-the-art dynamic instrumentation engines incur in prohibitive 
-	runtime overhead (10x and more). Static rewriters are increasing in popularity, 
+	runtime overhead (between 3x and 10x and more). Static rewriters introduce less overhead, 
 	but they are mostly targeted towards the \texttt{x86} architecture.
 
 	We would like to show that symbolization for ARM binaries 
-	is a viable alternative to existing approaches, that has less flexibility 
+	is a viable alternative to existing static approaches, that has less flexibility 
 	(only works on C, position independent binaries) but has
-	negligible overhead compared to compiled source code. We present 
+	negligible overhead. We present 
 	\sysname, a \emph{zero-overhead} static binary rewriter for \texttt{aarch64}
 	executables that solves key challenges such as pointer construction
 	detection and jump table instrumentation, based on 
-	the \sysnameold project.
+	the (\texttt{x86\_64}) RetroWrite project.
 
 	Our proof of work implementation of a memory sanitizer instrumentation
-	pass has the same functionality of the source-based counterpart, and our
-	benchmarks show that it is \todo{xx\%} faster than Valgrind's \texttt{memcheck}.
+	pass has the same core functionality of AddressSanitizer, and our
+	benchmarks show that it is an order of magnitude faster than Valgrind's \texttt{memcheck}.
 %\mat{Make XX a macro and use it throughout when you refer to that number.}
 
 \end{abstract}
