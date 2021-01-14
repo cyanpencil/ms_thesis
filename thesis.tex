@@ -1750,9 +1750,16 @@ In this section we validate the claims that we made earlier by performing experi
 We show that \sysname can symbolize and instrument \texttt{ARM} binaries with the performance of
 source based instrumentation without compromises on its scalability.
 
+\mat{Maybe highlight the 3-4 main points we want to demonstrate:
+power of instrumentation (i.e., can instrument large binaries), low overhead at
+runtime of instrumented code, power of different instrumentations, different
+architectures, feasibility of register allocation, ...}
+
 \section{Setup and Hardware} 
-We decided to run experiments on two different setups. The first is a low end system, while
-the second one is a very high end configuration, in order to highlight the differences between
+
+We decided to run experiments on two different machines: a low end setup and a
+high end setup. Evaluating on machines at opposite end of the performance
+spectrum allows us to highlight differences between
 the two device classes. 
 The machines we had available are the following:
 \begin{itemize}
@@ -1760,13 +1767,13 @@ The machines we had available are the following:
 	\item An Atlas/A57 (2.4GHz) CPU with 64 GB of RAM
 \end{itemize}
 
-%\mat{Why use two machines? A low end and a high end configuration to highlight the two different
-%device classes.}
-
-To benchmark the performance of rewritten binaries, we used the SPEC CPU 2017
-benchmark suite~\cite{speccpu2017}.  We used only the C language benchmarks as
-\sysname does not (yet) support the symbolization of C++ exceptions. The list of the
-benchmarks can be seen in \autoref{tabularasa}.  All of the benchmarks were run on
+To benchmark the performance of rewritten binaries, we used the C language
+benchmarks of the SPEC CPU 2017
+benchmark suite~\cite{speccpu2017}. We focus on the C language benchmarks as
+\sysname does not (yet) support the symbolization of C++ exceptions or class
+hierarchy recovery.
+\autoref{tabularasa} shows the list of evaluated
+benchmarks.  All of the benchmarks were run on
 both machines, but on the Raspberry some benchmarks were excluded from the results
 as 4GB of RAM were not enough to avoid using swap memory, compromising the
 experiments. The Atlas machine was generously hosted by the
@@ -1784,7 +1791,8 @@ manual~\cite{specaliasing} to avoid problems with the \texttt{perlbench}
 benchmark. 
 
 To demonstrate the scalability of our approach, we rewrite binaries as large as
-the \texttt{gcc} benchmark (\textgreater 10MB).  We evaluate the performance of the
+the \texttt{gcc} benchmark (\textgreater 10MB), resulting in \mat{TODO: xx MB} of
+symbolized assembly files.  We evaluate the performance of the
 symbolization engine by running the benchmarks 
 rewritten by \sysname without adding any kind of instrumentation. We
 then evaluate the performance of our memory sanitization instrumentation pass
@@ -1841,18 +1849,23 @@ Valgrind with the memory sanitization option (``\texttt{valgrind
 
 \subsection{Symbolization performance}
 
-\autoref{plot1} and \autoref{plot2} demonstrate how the overhead of the
-symbolization process is very small. Detailed results can be found in
-\autoref{labellatabella}.  The average overhead is 0.76\%, in line with other
-state of the art static rewriters~\cite{egalito}.  This kind of overhead is
-in part due to unoptimal realignment of sections and code, as we produce
-position independent assembly without low level optimizations such as cache
-hits maximization. Another important
-factor for the introduced overhead is that each pointer building instruction ``\lstinline{adrp}''
+\autoref{plot1} and \autoref{plot2} demonstrate that the overhead of reassembled
+symbolized binaries is negligible. Detailed results can be found in
+\autoref{labellatabella}. 
+\mat{Reduce passive voice: table X shows ...}
+The average overhead is 0.76\%, in line with other
+state of the art static rewriters~\cite{egalito} for other platforms.  
+
+While the overhead is low to negligible, we want to list the two main causes:
+alignment and pointer construction.
+First, \sysname currently does not conduct any cache line optimization for code
+and section layouts. Compilers layout code blocks to maximize code cache hits.
+Second, each pointer building instruction in the original code ``\lstinline{adrp}''
 is symbolized with two instructions (an ``\lstinline{adrp}'' followed by an
 ``\lstinline{add}''): so for each global variable access the binary makes the CPU will
-lose a clock cycle (probably less, as many \texttt{ARM} CPUs have hardware optimizations
-for \lstinline{adrp+add} sequences of instructions~\cite{pointeroptimizations}).
+execute an extra clock cycle. Note that, in practice, this will not cost a full
+clock cycle as many \texttt{ARM} CPUs have hardware optimizations
+for \lstinline{adrp+add} sequences of instructions~\cite{pointeroptimizations}.
 
 Interestingly, at first we used to have substantial overhead from symbolization
 alone.  This was at an early stage of the project, where we used literal pools
@@ -1916,16 +1929,17 @@ inside measurement error.
 \label{slowpools}
 \end{table}
 
-\subsection{Memory sanitization performance}
 
+\subsection{Memory sanitization performance}
 
 In this section we compare the overhead introduced by \sysname's memory
 sanitization instrumentation and the overhead introduced by adding memory
 sanitization during compilation (``\texttt{-fsanitize=address}'').  
 
 An overview of the results can be seen in \autoref{plot1} for the Atlas machine,
-and in \autoref{plot2} for the Raspberry. Both figures show the same pattern: 
-memory sanitization introduces some overhead but the execution time is still comparable
+and in \autoref{plot2} for the Raspberry Pi. Both figures show the same pattern: 
+memory sanitization introduces some overhead but the execution time remains
+similar
 to source-based instrumentation. However, we can see how the Raspberry suffered
 from a slightly higher overhead with instrumentation enabled. We think that one of the
 possible causes of this is that a low-end system like the Raspberry suffers more from
@@ -1949,7 +1963,7 @@ that increases code size by up to three-fold, substantially degrading cache perf
 \end{center}
 
 
-It's interesting to look at detailed results for the Atlas machine in 
+It is interesting to look at detailed results for the Atlas machine in 
 \autoref{labellatabella}. We can see that source-based ASAN has a 84.04\%
 overhead on average, but the overhead varies a lot between individual
 benchmarks, depending on the amount of memory accesses. For example,
@@ -1965,21 +1979,21 @@ average overhead). The reasons
 behind the slowdown are the following:
 \begin{itemize}
 	\item Number of instrumented locations: Without source code available,
-		\sysname cannot use certain types of analysis that the compilers use to 
+		\sysname cannot use certain types of analysis that the compiler uses to 
 		determine the safety of certain memory accesses. For this reason, \sysname
-		instruments every single memory access, while source ASAN skips some of them.
-	\item Assembly generation optimizations: \sysname is a relatively simple tool, 
+		instruments each memory access, while source ASAN skips some of them.
+	\item Assembly generation optimizations: \sysname is a straightforward
+rewriter
 		and instruments memory accesses by inserting hand-written assembly snippets. While
-		some optimizations were implemented (register savings), they
-		do not even come close to the number and complexity of optimizations passes that
-		standard compilers use when generating machine code. 
+		some optimizations were implemented (register savings), \sysname so far 
+has no peephole optimizer to reflow the emitted instrumentation.
 \end{itemize}
-Still, the slowdown with respect to source ASAN is very little compared to
+Still, the slowdown with respect to source ASAN is tiny compared to
 state of the art tools.  In fact, without source code, the only way of adding
 memory sanitization to a binary is through dynamic instrumentation. We ran the
-benchmarks using a famous dynamic instrumenter that implements memory
+benchmarks using the current state of the art dynamic instrumentation tool that implements memory
 sanitization (Valgrind's \texttt{memcheck} tool~\cite{valgrind}), and plotted
-the runtimes in \autoref{plot1} and \autoref{plot2}. The overhead introduced by
+the runtime in \autoref{plot1} and \autoref{plot2}. The overhead introduced by
 dynamic instrumentation is an order of magnitude higher than the overhead of binary ASAN, depending on
 the amount of memory accesses of the benchmark. 
 
@@ -2008,11 +2022,12 @@ and the original benchmarks compiled with source based ASAN.  }
 \end{table}
 
 
-However, it needs to be said that our binary ASAN instrumentation has a few
-shortcomings. First of all, stack variables accesses are not instrumented.
-Secondly, global variable accesses are not instrumented. Both of those are
-caused by the fact that without source code, bounds determination is impossible
-for variables in memory regions outside of the heap. 
+Note that, so far our binary ASAN instrumentation does not detect out of bounds
+accesses for global variables and stack accesses. While loads/stores are
+instrumented and checked, the underlying memory redzones are not instrumented
+due to lack of precise variable information. The length and scope of globals and
+stack variables is not determinable in the general case and without this
+information, we cannot check them precisely.
 
 
 \subsection{Optimization: register savings}
@@ -2118,13 +2133,14 @@ as on average the overhead is reduced by 48.1\%.
 Trampolines are one of the most straight-forward way to instrument a binary, and they are
 are free from the burden of static analysis required to perform symbolization. However, we
 would like to show that the tradeoff in performance is very large compared to the in-place
-instrumenation that symbolization permits to do. 
+instrumentation that symbolization permits to do. 
 
 We implemented the same memory sanitization instrumentation pass by using
 trampolines, and ran the same benchmarks to compare the timings. Results can
 be seen in \autoref{slowtrampolines}. 
 
-This was a fairly simple experiment that used only a single type of very heavy instrumenation
+This was a fairly simple experiment that used only a single type of very heavy
+instrumentation
 (memory sanitization adds a lot of branches in the code and a very large number of 
 instructions need to be instrumented), but the difference in overhead is very large, with
 trampolines being 56\% slower on average compared to symbolized in-place instrumentation. 
@@ -2205,17 +2221,19 @@ tests.
 
 
 \section{Comparison to Egalito}
-The only state-of-the-art rewriter engine that had features comparable to
-\sysname is Egalito~\cite{egalito}. Egalito is a binary ``recompiler'' targeted
-at C, position-independent Linux executables that lifts binary to a custom
+
+The only state-of-the-art static binary rewriter that had similar features
+compared to
+\sysname is Egalito~\cite{egalito}. Egalito is a binary ``recompiler'' targeting
+compiled C code as position-independent ARM64 Linux executables that lifts binary to a custom
 Intermediate Representation (IR) and supports a large variety of
 instrumentation and transformation passes, and has a (reported) similar
 baseline overhead to \sysname (0.46\% on SPEC CPU2006). The comparison with
 Egalito is interesting because the authors had to tackle very similar problems
 as ours (pointer construction and jump table recovery); however, they do not
-address how they solved the problem of jump table enlargement in the case of
-heavyweight instrumentation.  Unfortunately, we were not able to perform any
-kind of comparison as the latest version available in the public repository
+specify how they solved the problem of jump table enlargement in the case of
+heavyweight instrumentation.  Unfortunately, we could not perform any
+kind of comparison as the version available in the public repository
 crashes on any \texttt{aarch64} binary we tried to rewrite. We opened an
 issue \footnote{\url{https://github.com/columbia/egalito/issues/32}} on their
 public Github repository on November 28, 2020, but it still left unanswered (as of \today).
