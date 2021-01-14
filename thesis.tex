@@ -2274,8 +2274,8 @@ run all the benchmarks all over again}
 
 \section{Dynamic binary rewriting}
 While dynamic rewriters are scalable and do not suffer from the limitations
-of static analysis, they incur in large overhead and are not suited 
-for high performant instrumentation. 
+of static analysis, they incur large overheads for translation and execution and are not suited 
+for high performance instrumentation. 
 They can either make use of the operating systems' debugging primitives
 (ptrace API in Linux, or the application debugging API in Windows), or
 of a custom loader, like \texttt{PIN}~\cite{pin} or \texttt{DynamorIO}, to
@@ -2283,7 +2283,7 @@ modify and instrument the target binary at runtime.
 While they have to solve similar problems compared to static rewriting
 (such as disassembly and CFG recovery), they can
 leverage run-time information that is unavailable to static rewriters.
-For example, a dynamic rewriter is able to know the target of an indirect 
+For example, a dynamic rewriter knows the target of an indirect 
 branch before executing it, since the register values are known at any given
 point during the execution. 
 Dynamic rewriters can also be built on top of emulation frameworks, which
@@ -2293,11 +2293,13 @@ by \texttt{QEMU}.
 
 
 \section{Static binary rewriting}
+
 We will divide static rewriters by the technique they use to insert
 instrumentation in the target binary, namely trampolines, lifting to an
 intermediate representation, and symbolization.
 
 \subsection{Static rewriters that use trampolines}
+
 \texttt{E9patch}~\cite{e9patch} is a recent static rewriter for \texttt{x86\_64} Linux
 ELF binaries, that inserts instrumentation with trampolines. This techniques
 works by substituting the instruction that need to be instrumented by a non-conditional
@@ -2369,7 +2371,10 @@ no other static rewriter for \texttt{aarch64} that efficiently supports heavy-we
 such as AddressSanitizer has been proposed, other than this study. \todo{Maybe a bit too cheesy?}
 
 
-
+\mat{overall, RW is fine. I'd like to see a table that summarizes the different
+static and dynamic approaches along several metrics such as type (static, dynamic),
+ability for arbitrary code rewriting, performance overhead, instrumentation
+limitations and so on.}
 
 
 %and \texttt{Ramblr}~\cite{ramblr} are the 
