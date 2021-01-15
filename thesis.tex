@@ -69,6 +69,7 @@
 \usepackage[linkcolor=black,colorlinks=true,citecolor=black,filecolor=black]{hyperref}
 
 
+
 %% Document information
 %% ====================
 
@@ -81,10 +82,10 @@
 \date{\today}
 
 
-\usepackage{xcolor} 
-\usepackage{soul}
-\usepackage{hyperref}
 \usepackage{listings} 
+\usepackage{xcolor} 
+%\usepackage{hyperref}
+
 \usepackage{caption}
 \usepackage{booktabs}
 \usepackage{siunitx}
@@ -149,6 +150,8 @@
 \DeclareRobustCommand{\todo}[1]{{\sethlcolor{cyan}\hl{TODO: #1}}}
 \DeclareRobustCommand{\mat}[1]{{\sethlcolor{red}\hl{MAT: #1}}}
 
+\newcommand{\boc}[1]{\parbox[c]{5cm}{\centering\footnotesize #1}}
+
 \begin{document}
 
 
@@ -205,23 +208,28 @@ up with my constant complaining. Thanks!
 	wish all the best for him, and in particular I hope
 	that I can work on many other projects with him.
 	
-	I would also like to thank his research group, HexHive, as I always found
+	I would like to thank as well the HexHive research group, as I always found
 	myself very welcome there, even if I could visit them only once a week.  
+
+	The last six months have been <improving> and pleasant: I had very good
+	conversations with prof. Payer. His explainations let me learn a huge amounts
+	of techniques. 
+
 	Those have been six very happy months in which I learned quite a lot of 
 	things, and I have to thank prof. Prof. Payer and his doctorate students 
 	for it. I hope we can continue to work together in the future!
 	
-	Special thanks goes to my family and my friends in Rome. Their support was
-	always available, and it has been a huge pleasure to visit them once
-	in a while in Italy. I also need to thank my S.O. Giulia, I felt she was
+	Special thanks go to my family and my friends in Rome. Their support was
+	always available \todo{anche se a distanza} and it has been a huge pleasure to visit them once
+	in a while in Italy. I am also need to thank my S.O. Giulia, I felt she was
 	always behind my back, keeping a good check on my mental sanity during the
 	worst times of the outbreak. My roommates Matteo and Filippo deserve
-	a mention here too, as their patience and their rubber duck debugging skills
+	a mention here as well, since their patience and their rubber duck debugging skills
 	proved to be fundamental during some nasty bug-hunting sessions.
 
 	Finally, I would also like to mention my CTF team, Flagbot, and the teams I
-	had played with occasionally, namely polyglots and TRX, that made me 
-	spend so many weekends staying at home but ultimately led me to meet so 
+	had played with occasionally, namely Polyglots and TRX; they made me 
+	spend so many weekends staying at home but ultimately let me meet 
 	many new interesting people. Thanks!
 \end{abstract}
 
@@ -357,7 +365,7 @@ The fact that \texttt{ARM} became popular only very recently, combined with the
 difficulty of performing static analysis on it, are the reasons behind the lack
 of advanced static binary rewriters for \texttt{ARM}. In fact, most of the existing
 ones rely on simpler techniques (like \emph{trampolines}) that require only 
-superficial analysis, but are not flexible and nor efficient.
+superficial analysis, but are not flexible nor efficient.
 
 Static analysis is the core foundation on many state-of-the-art static binary
 rewriters: one of the most recent and successful ones for \texttt{x86\_64} is
@@ -365,7 +373,7 @@ RetroWrite~\cite{dinesh20oakland}. It uses a novel technique called
 \emph{symbolization}, which is the process of transforming an executable back
 to an assembly listing that is \emph{re-assemblable}, where absolute addresses
 are substituted with assembly labels (or \emph{symbols}).  Having all addresses
-are substituted with labels makes adding custom code (instrumentation) or arbitrary
+substituted with labels makes adding custom code (instrumentation) or arbitrary
 transformation on existing code very easy, as the resulting assembly can be
 parsed by a generic off-the-shelf assembler and assembled into a new instrumented
 executable. 
@@ -843,12 +851,12 @@ source of non trivial problems during the development of \sysname.
 		stated before, jump table entries in \texttt{ARM} are indistinguishable from 
 		random bytes.
 	\item \emph{Discontinuities in immediates}: Some \texttt{ARM} instructions, like 
-		\lstinline{ADD}, support having immediates as one of the operands.  
+		``\lstinline{add}'', support having immediates as one of the operands.  
 		However, they do not accept a standard range of immediates like in 
 		\texttt{x86}, but instead a specific set of values that may not be 
-		continuous.  For example the \lstinline{add} instruction can use only 
+		continuous.  For example the ``\lstinline{add}'' instruction can use only 
 		immediates that can be expressed with a value of 8 bits scaled by a 
-		\lstinline{ror} with a
+		``\lstinline{ror}'' with a
 		4 bits operand.
 	\item \emph{Alignment issues}: The stack pointer register ``\lstinline{sp}'' must 
 		always be aligned to 16 bytes. Failing to do so will trigger a 
@@ -889,9 +897,9 @@ source of non trivial problems during the development of \sysname.
 %This section is usually 5-10 pages.
 
 
-We will now go over the goals that we designed \sysname according to, we will explain
+We will now go over the design goals of \sysname, we will explain
 which were the key issues that we had to face due to the quirks of the \texttt{ARM}
-architecture, and the solutions we adopted to overcome those problems both in
+architecture, and the solutions we adopted to overcome these problems both in
 the \emph{symbolization} and in the \emph{instrumentation} parts of \sysname.
 
 
@@ -2154,7 +2162,7 @@ lower enough to avoid being noticeable.
 \sisetup{detect-weight=true}
 \sisetup{mode=text}
 \robustify\bfseries
-	\begin{tabular}{lSS[table-format=1.2]S[table-format=3.2]}
+	\begin{tabular}{lS[table-format=1.2]S[table-format=3.2]}
 \toprule
 		\textbf{Name} \hspace{4em} & \textbf{Binary ASAN} & \textbf{Trampoline ASAN} \\
 
@@ -2368,13 +2376,43 @@ already existings offsets and keeping the jump table of the same size as we do. 
 
 To the best of our knowledge,
 no other static rewriter for \texttt{aarch64} that efficiently supports heavy-weight instrumentation
-such as AddressSanitizer has been proposed, other than this study. \todo{Maybe a bit too cheesy?}
+such as AddressSanitizer has been proposed, other than the one proposed in this study. 
+
+
+
 
 
 \mat{overall, RW is fine. I'd like to see a table that summarizes the different
 static and dynamic approaches along several metrics such as type (static, dynamic),
 ability for arbitrary code rewriting, performance overhead, instrumentation
 limitations and so on.}
+
+\begin{table}
+\centerfloat
+\begin{tabular}{lllccc}
+\toprule
+	\textbf{Name} & \textbf{Year} & \textbf{Architectures} & \textbf{Type} & \textbf{Technique} & \textbf{Features/Limitations} \\
+\toprule
+	Bistro     & 2013 & x86(32,64)             & static & stretching        & \boc{} \\ \midrule
+	McSema     & 2014 & x86(32,64)             & static & LLVM IR           & \boc{C++ exceptions support.\\IDA Pro dependency.} \\ \midrule
+	Uroboros   & 2015 & x86(32,64)             & static & symbolization     & \boc{First symbolization approach} \\ \midrule
+	Ramblr     & 2017 & x86(32,64)             & static & symbolization     & \boc{Like Uroboros, but more reliable.} \\ \midrule
+	RevARM     & 2017 & ARM(32)                & static & stretching        & \boc{Enlarged jmptbl support.} \\ \midrule
+	Repica     & 2018 & ARM(32, 64)            & static & stretching        & \boc{Safe scalar/reference distinction.} \\ \midrule
+	Egalito    & 2020 & x86(64), ARM(64)       & static & custom IR         & \boc{Safe scalar/reference distinction.\\Many instr passes supported.} \\ \midrule
+	E9Patch    & 2020 & x86(64)                & static & trampolines       & \boc{} \\ \midrule
+	RetroWrite & 2021 & x86(64), ARM(64)       & static & symbolization     & \boc{Safe scalar/reference distinction.\\Enlarged jmptbl support.\\Memory sanitization support} \\ \midrule
+
+	Valgrind   & 2002 & x86(32,64), ARM(32,64) & dynamic& custom IR         & \boc{} \\ \midrule
+	AFL-QEMU   & 2013 & x86(32,64), ARM(32,64) & dynamic& emulation         & \boc{} \\ \midrule
+	QASAN      & 2020 & x86(32,64), ARM(32,64) & dynamic& emulation         & \boc{Memory sanitization support.} \\ \midrule
+	DynamorIO  & 2002 & x86(32,64), ARM(32)    & dynamic& virtualization    & \boc{} \\ \midrule
+	PIN        & 2005 & x86(32,64)             & dynamic& JIT-recompilation & \boc{} \\
+\bottomrule
+\end{tabular}
+\caption{Summary of some of the state-of-the-art binary rewriting projects.}
+\label{confront}
+\end{table}
 
 
 %and \texttt{Ramblr}~\cite{ramblr} are the 
@@ -2487,7 +2525,7 @@ architecture and more.
 \cleardoublepage
 \phantomsection
 
-\addcontentsline{toc}{chapter}{Bibliography}
+%\addcontentsline{toc}{chapter}{Bibliography}
 \printbibliography
 
 % Appendices are optional
@@ -2498,6 +2536,8 @@ architecture and more.
 %
 % In case you ever need an (optional) appendix.
 %
+
+\includepdf[pages={-}]{declaration-originality.pdf}
 
 \end{document}
 
@@ -2512,6 +2552,4 @@ architecture and more.
 \bibliographystyle{plain}
 %\bibliography{thesis}
 
-\includepdf[pages={-}]{declaration-originality.pdf}
 
-\end{document}
