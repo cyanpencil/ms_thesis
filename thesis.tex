@@ -77,8 +77,7 @@
 \author{Luca Di Bartolomeo}
 \thesistype{Master Thesis}
 \advisors{Advisor: Prof.\ Dr.\ Mathias Payer\\Supervisor: Prof.\ Dr.\ Kenny Paterson}
-\department{Applied Cryptography Group\\Institute of Information Security\\Department of Computer Science}
-\department{Applied Cryptography Group\\Institute of Information Security\\Department of Computer Science}
+\department{Institute of Information Security\\Department of Computer Science}
 \date{\today}
 
 
@@ -150,7 +149,7 @@
 \DeclareRobustCommand{\todo}[1]{{\sethlcolor{cyan}\hl{TODO: #1}}}
 \DeclareRobustCommand{\mat}[1]{{\sethlcolor{red}\hl{MAT: #1}}}
 
-\newcommand{\boc}[1]{\parbox[c]{5cm}{\centering\footnotesize #1}}
+\newcommand{\boc}[1]{\parbox[l]{5.2cm}{\footnotesize #1}}
 
 \begin{document}
 
@@ -174,11 +173,26 @@
 
 
 \thispagestyle{empty}
-\vspace*{4cm}
+%\vspace*{4cm}
+\vfill
 This thesis was developed with the guidance of prof.Mathias Payer and the
 	HexHive research group at EPFL, and under the remote supervision of prof.
-	Kenneth Paterson at ETH. \todo{EPFL logo}
+	Kenneth Paterson at ETH. 
 \end{abstract}
+%\begin{textblock}{4in}[0.3066,0.39](1.5in,0.85in)
+\vfill
+
+\begin{figure}[h]
+\centerfloat
+\begin{minipage}{.6\textwidth}
+	\includegraphics[width=2.5in]{EPFLlogo}
+\end{minipage}
+%\if@lablogo
+%\begin{textblock}{4in}[0.3066,0.39](5.7in,0.85in)
+\begin{minipage}{.6\textwidth}
+	\includegraphics[width=3in]{LABlogo}
+\end{minipage}
+\end{figure}
 
 
 
@@ -205,22 +219,22 @@ up with my constant complaining. Thanks!
 \begin{abstract}
 	I would like to thank my advisor, Prof. Mathias Payer, for his support,
 	guidance, and for assigning me this inspiring project.  I
-	wish all the best for him, and in particular I hope
-	that I can work on many other projects with him.
+	wish all the best for him, and I look forward to continue
+	working with him in the future.
 	
 	I would like to thank as well the HexHive research group, as I always found
 	myself very welcome there, even if I could visit them only once a week.  
 
-	The last six months have been <improving> and pleasant: I had very good
-	conversations with prof. Payer. His explainations let me learn a huge amounts
-	of techniques. 
+	The last six months have been inspiring and pleasant: I had very good
+	conversations with everyone at EPFL and I always felt like I was
+	learning a lot.
 
-	Those have been six very happy months in which I learned quite a lot of 
-	things, and I have to thank prof. Prof. Payer and his doctorate students 
-	for it. I hope we can continue to work together in the future!
+	%Those have been six very happy months in which I learned quite a lot of 
+	%things, and I have to thank prof. Prof. Payer and his doctorate students 
+	%for it. I hope we can continue to work together in the future!
 	
 	Special thanks go to my family and my friends in Rome. Their support was
-	always available \todo{anche se a distanza} and it has been a huge pleasure to visit them once
+	always available even when remote and it has been a huge pleasure to visit them once
 	in a while in Italy. I am also need to thank my S.O. Giulia, I felt she was
 	always behind my back, keeping a good check on my mental sanity during the
 	worst times of the outbreak. My roommates Matteo and Filippo deserve
@@ -392,22 +406,25 @@ technique, we then measure its performance to demonstrate that the execution tim
 comparable to the original LLVM pass (that requires the source code of the
 binary to instrument, so impossible to apply on binary-only modules.) 
 
-The main challenges we had to tackle were the detection and recovery of pointers,
-that are either stored in a read-only region or more commonly are built through
-a series of arithmetic operations because a single pointer cannot fit into a single
-\texttt{ARM} instruction. This required reverse-engineering the patterns of code the compiler
-generates and clever ways to transform said arithmetic sequences of instructions
-into symbolized assembly snippets that can support the insertion of arbitrary code in
-between. Another big part of our work focused on the detection, recovery and symbolization
-of jump tables: switch statements on \texttt{ARM} binaries are very different from \texttt{x86}
-(they are stored as a set of offsets from a given base address, not as a sequential list
-of absolute addresses). All the standard heuristics methods that are commonly used
-on \texttt{x86} cannot be used on \texttt{ARM} as the jump tables are indistinguishable
-from random data, so this required the development of a bare-bones symbolic emulator to detect them. Furthermore,
-since they are stored \emph{compressed} \todo{explain this compressed} in memory, they do not support
-the insertion of large instrumentation. We solved this problem with a new technique called
-\emph{jump table enlargement} which lets us introduced arbitrary-sized instrumentation
-inside a jump table. 
+The main challenges we had to tackle were the detection and recovery of
+pointers, that are either stored in a read-only region or more commonly are
+built through a series of arithmetic operations because a single pointer cannot
+fit into a single \texttt{ARM} instruction. This required reverse-engineering
+the patterns of code the compiler generates and clever ways to transform said
+arithmetic sequences of instructions into symbolized assembly snippets that can
+support the insertion of arbitrary code in between. Another big part of our
+work focused on the detection, recovery and symbolization of jump tables:
+switch statements on \texttt{ARM} binaries are very different from \texttt{x86}
+(they are stored as a set of offsets from a given base address, not as a
+sequential list of absolute addresses). All the standard heuristics methods
+that are commonly used on \texttt{x86} cannot be used on \texttt{ARM} as the
+jump tables are indistinguishable from random data, so this required the
+development of a bare-bones symbolic emulator to detect them. Furthermore,
+since they are stored \emph{compressed} in memory (if cases are close to each
+other, every offset may occupy only 1 or 2 bytes instead of the normal 8
+bytes), they do not support the insertion of large instrumentation. We solved
+this problem with a new technique called \emph{jump table enlargement} which
+lets us introduced arbitrary-sized instrumentation inside a jump table. 
 
 
 
@@ -502,7 +519,7 @@ present the most common uses of binary rewriting.
 
 \subsection{Binary rewriting in short}
 To better explain how does a rewriting algorithm work, we can summarize
-its process into four main steps:
+its process into four main steps~\cite{binaryrewritingsurvey}:
 \begin{itemize}
 	\item \emph{Parsing}: Executables are complex formats and are often optimized
 		for speed instead of readability. Separating code, data and metadata in 
@@ -699,10 +716,10 @@ scalars and references by focusing on position-independent executables (PIE).
 
 \section{Symbolization}
 
-The \emph{symbolization} technique is a special form of code generation that focuses
-on the output of \emph{reassemblable} assembly that can be directly fed to 
-a generic assembler to produce the instrumented executable. An example of this process
-can be found in Listing~\ref{diffass}.
+The \emph{symbolization} technique is a special form of code generation that
+focuses on the output of \emph{reassemblable} assembly that can be directly fed
+to a generic assembler to produce the instrumented executable.
+Listing~\ref{diffass} highlights an example of this process .
 
 Symbolization works by transforming all reference constants in the executable
 (both in the code and data sections, including relative branches) with assembly
@@ -1117,7 +1134,7 @@ following control flow and building step by step the resulting expression,
 similar to what a dumbed-down symbolic executor would output. The 
 pseudo-emulation engine is limited, supports circa 20 instructions, as 
 emulating \texttt{ARM} was out of the scope of the project and we only needed it for 
-jump table detection. A detailed explanation of how it works can be found in 
+jump table detection. A detailed explanation of how it works is in 
 the next chapter.
 
 \subsubsection{Detection of jump tables size}
@@ -1236,9 +1253,7 @@ approach to tackle it.
 
 
 
-\subsection{Pointer Construction}
-
-\subsubsection{Detection and recovery of pointers}
+\subsection{Detecting pointer constructions}
 
 Standard compilers (clang, gcc) that target \texttt{aarch64} use a common 
 pattern for building pointers: an ``\lstinline{adrp}'' instruction, loading the page 
@@ -1475,10 +1490,11 @@ Our algorithm to detect a jump table pattern works as follows:
 
 To reverse-emulate every path that leads to the indirect call, we implemented a
 very limited \texttt{aarch64} symbolic instruction emulator. It supports around
-20 \texttt{ARM} instructions (all those that are common in jump table constructs, plus
-arithmetic instructions and a few memory-related ones).  A very simple example of the
-output of this emulator can be found in \autoref{emulator} (jump table constructs are 
-often more nuanced and interleaved with other instructions).
+20 \texttt{ARM} instructions (all those that are common in jump table
+constructs, plus arithmetic instructions and a few memory-related ones).
+\autoref{emulator} shows a very simple example of the output of this emulator
+(jump table constructs are often more nuanced and interleaved with other
+instructions).
 
 After we get the symbolic value of the indirect jump register, we compare it to
 the standard jump table expression, which is the following:
@@ -1615,7 +1631,7 @@ can be seen in \autoref{emulator}. We change the shift value according to how hi
 the dividend in the symbolized jump table (the \texttt{add} instruction support shifting left
 up to 4, but we insert a standard ``\lstinline{lsl}'' instruction before if it's higher than 4). 
 
-An example of this can be found in Listing \ref{enlarged}.
+Listing \ref{enlarged} highlights an example of this.
 
 \begin{figure}[h]
 \begin{lstlisting}[belowskip=-2em]
@@ -1672,7 +1688,7 @@ implement it as an instrumentation pass, we manually wrote assembly code that
 matched its functionality and could be adapted to both reads and stores.  
 Different versions of ASan snippets were developed depending on the size of the 
 store/load, to ensure maximum efficiency and avoid wasting calculations at 
-runtime. An example of an instrumented instruction can be found in \autoref{instrumentation}.
+runtime. \autoref{instrumentation} shows an example of an instrumented instruction.
 
 \begin{lstlisting}[float,floatplacement=H,label={instrumentation},caption={Example of BASan memory sanitization on a 16-byte memory load}]
 .ASAN_ENTER:
@@ -1755,13 +1771,19 @@ conditional branch for the error checking.
 
 
 In this section we validate the claims that we made earlier by performing experiments.
-We show that \sysname can symbolize and instrument \texttt{ARM} binaries with the performance of
-source based instrumentation without compromises on its scalability.
+We show that \sysname can symbolize and instrument \texttt{ARM} binaries 
+and that presents important features such as the following:
 
-\mat{Maybe highlight the 3-4 main points we want to demonstrate:
-power of instrumentation (i.e., can instrument large binaries), low overhead at
-runtime of instrumented code, power of different instrumentations, different
-architectures, feasibility of register allocation, ...}
+\begin{itemize}
+	\item Scalability: support for large binaries.
+	\item Performance: low instrumentation overhead.
+	\item Correctness: instrumentation does not affect original functionality of the binary.
+\end{itemize}
+
+%\mat{Maybe highlight the 3-4 main points we want to demonstrate:
+%power of instrumentation (i.e., can instrument large binaries), low overhead at
+%runtime of instrumented code, power of different instrumentations, different
+%architectures, feasibility of register allocation, ...}
 
 \section{Setup and Hardware} 
 
@@ -1799,8 +1821,8 @@ manual~\cite{specaliasing} to avoid problems with the \texttt{perlbench}
 benchmark. 
 
 To demonstrate the scalability of our approach, we rewrite binaries as large as
-the \texttt{gcc} benchmark (\textgreater 10MB), resulting in \mat{TODO: xx MB} of
-symbolized assembly files.  We evaluate the performance of the
+the \texttt{gcc} benchmark (\textgreater 10MB), which results in over 125MB of
+symbolized assembly.  We evaluate the performance of the
 symbolization engine by running the benchmarks 
 rewritten by \sysname without adding any kind of instrumentation. We
 then evaluate the performance of our memory sanitization instrumentation pass
@@ -1851,16 +1873,15 @@ Valgrind with the memory sanitization option (``\texttt{valgrind
 	\texttt{lbm\_r      }              & 23 KB  & 18 KB  & 10508   & 28    \\
 \bottomrule
 \end{tabular}
-	\caption{Name and size of the SPEC CPU2017 benchmarks written in C. \todo{add basic block number}}
+	\caption{Name and size of the SPEC CPU2017 benchmarks written in C. }
 \label{tabularasa}
 \end{table}
 
 \subsection{Symbolization performance}
 
 \autoref{plot1} and \autoref{plot2} demonstrate that the overhead of reassembled
-symbolized binaries is negligible. Detailed results can be found in
-\autoref{labellatabella}. 
-\mat{Reduce passive voice: table X shows ...}
+symbolized binaries is negligible. 
+\autoref{labellatabella} shows more detailed results for the Atlas machine. 
 The average overhead is 0.76\%, in line with other
 state of the art static rewriters~\cite{egalito} for other platforms.  
 
@@ -1952,7 +1973,7 @@ to source-based instrumentation. However, we can see how the Raspberry suffered
 from a slightly higher overhead with instrumentation enabled. We think that one of the
 possible causes of this is that a low-end system like the Raspberry suffers more from
 cache misses than a high-end system (and memory sanitization is a very heavy instrumentation
-that increases code size by up to three-fold, substantially degrading cache performance) \todo{are you sure of this??}. 
+that increases code size by up to three-fold, substantially degrading cache performance). 
 
 \begin{figure}[h]
 \includegraphics[width=15cm]{cloudlab.pdf}
@@ -2248,9 +2269,9 @@ public Github repository on November 28, 2020, but it still left unanswered (as 
 
 
 
-\todo{Do we want to talk about cache misses? I already have scripts to measure them, I just need to 
-run all the benchmarks all over again}
-\mat{If you have them sure, but as lower priority. Nice to have but not a must.}
+%\todo{Do we want to talk about cache misses? I already have scripts to measure them, I just need to 
+%run all the benchmarks all over again}
+%\mat{If you have them sure, but as lower priority. Nice to have but not a must.}
 
 
 
@@ -2368,46 +2389,51 @@ a reported similar baseline overhead to \sysname (0.46\% on SPEC CPU2006). Detec
 jump tables is done through backwards-slicing; the authors do not specify how
 they solved pointer construction recovery.
 
-Nor \texttt{egalito} neither \texttt{repica} address the problem of jump table enlargement, fundamental
-in the case of heavy-weight instrumentation like memory sanitization.  Even though it is older, \texttt{RevARM}~\cite{revarm} is the only one that supports resizing of jump tables to insert large instrumentation; however
-\texttt{RevARM} \emph{stretches} the jump table to make space for larger offsets, instead of multiplying the
-already existings offsets and keeping the jump table of the same size as we do. Also, \texttt{RevARM} only supports
-32 bit \texttt{ARM} binaries. 
+Nor \texttt{egalito} neither \texttt{repica} address the problem of jump table
+enlargement, fundamental in the case of heavy-weight instrumentation like
+memory sanitization.  Even though it is older, \texttt{RevARM}~\cite{revarm} is
+the only one that supports resizing jump tables to insert large
+instrumentation; however \texttt{RevARM} \emph{stretches} the jump table to
+make space for larger offsets, instead of multiplying the already existings
+offsets and keeping the jump table of the same size as we do. Also,
+\texttt{RevARM} only supports 32 bit \texttt{ARM} binaries. 
 
-To the best of our knowledge,
-no other static rewriter for \texttt{aarch64} that efficiently supports heavy-weight instrumentation
-such as AddressSanitizer has been proposed, other than the one proposed in this study. 
+To the best of our knowledge, no other static rewriter for \texttt{aarch64}
+that efficiently supports heavy-weight instrumentation such as AddressSanitizer
+has been proposed, other than the one proposed in this study. 
 
 
 
+\section{Summary of related work}
+We present a short summary of binary rewriters in \autoref{confront} for quick
+comparison.  Please note that this table is vastly incomplete and that the
+rewriters listed in this table were hand-picked by us because were relevant to
+our work or because were directly referenced previously.  For a more detailed summary,
+we redirect the reader to the survey by Wenzl et al.~\cite{binaryrewritingsurvey}.
 
 
-\mat{overall, RW is fine. I'd like to see a table that summarizes the different
-static and dynamic approaches along several metrics such as type (static, dynamic),
-ability for arbitrary code rewriting, performance overhead, instrumentation
-limitations and so on.}
 
 \begin{table}
 \centerfloat
-\begin{tabular}{lllccc}
+\begin{tabular}{llllll}
 \toprule
 	\textbf{Name} & \textbf{Year} & \textbf{Architectures} & \textbf{Type} & \textbf{Technique} & \textbf{Features/Limitations} \\
 \toprule
-	Bistro     & 2013 & x86(32,64)             & static & stretching        & \boc{} \\ \midrule
-	McSema     & 2014 & x86(32,64)             & static & LLVM IR           & \boc{C++ exceptions support.\\IDA Pro dependency.} \\ \midrule
+	Bistro     & 2013 & x86(32)                & static & stretching        & \boc{ASLR support\\Closed-source dependency (IDAPro)} \\ \midrule
+	McSema     & 2014 & x86(32,64)             & static & LLVM IR           & \boc{C++ exceptions support.\\Closed-source dependency (IDAPro)} \\ \midrule
 	Uroboros   & 2015 & x86(32,64)             & static & symbolization     & \boc{First symbolization approach} \\ \midrule
 	Ramblr     & 2017 & x86(32,64)             & static & symbolization     & \boc{Like Uroboros, but more reliable.} \\ \midrule
-	RevARM     & 2017 & ARM(32)                & static & stretching        & \boc{Enlarged jmptbl support.} \\ \midrule
-	Repica     & 2018 & ARM(32, 64)            & static & stretching        & \boc{Safe scalar/reference distinction.} \\ \midrule
-	Egalito    & 2020 & x86(64), ARM(64)       & static & custom IR         & \boc{Safe scalar/reference distinction.\\Many instr passes supported.} \\ \midrule
-	E9Patch    & 2020 & x86(64)                & static & trampolines       & \boc{} \\ \midrule
-	RetroWrite & 2021 & x86(64), ARM(64)       & static & symbolization     & \boc{Safe scalar/reference distinction.\\Enlarged jmptbl support.\\Memory sanitization support} \\ \midrule
+	RevARM     & 2017 & ARM(32)                & static & stretching        & \boc{First static rewriter for ARM\\Enlarged jmptbl support\\Closed-source dependency (IDAPro)} \\ \midrule
+	Repica     & 2018 & ARM(32, 64)            & static & stretching        & \boc{Safe scalar/reference distinction} \\ \midrule
+	Egalito    & 2020 & x86(64), ARM(64)       & static & custom IR         & \boc{Safe scalar/reference distinction\\Many instr passes supported\\Kernel support (?)} \\ \midrule
+	E9Patch    & 2020 & x86(64)                & static & trampolines       & \boc{No CFG recovery needed\\High overhead due to trampolines} \\ \midrule
+	RetroWrite & 2021 & x86(64), ARM(64)       & static & symbolization     & \boc{Safe scalar/reference distinction\\Enlarged jmptbl support\\Memory sanitization support} \\ \midrule
 
-	Valgrind   & 2002 & x86(32,64), ARM(32,64) & dynamic& custom IR         & \boc{} \\ \midrule
-	AFL-QEMU   & 2013 & x86(32,64), ARM(32,64) & dynamic& emulation         & \boc{} \\ \midrule
-	QASAN      & 2020 & x86(32,64), ARM(32,64) & dynamic& emulation         & \boc{Memory sanitization support.} \\ \midrule
-	DynamorIO  & 2002 & x86(32,64), ARM(32)    & dynamic& virtualization    & \boc{} \\ \midrule
-	PIN        & 2005 & x86(32,64)             & dynamic& JIT-recompilation & \boc{} \\
+	Valgrind   & 2002 & x86(32,64), ARM(32,64) & dynamic& custom IR         & \boc{Many instr passes supported} \\ \midrule
+	AFL-QEMU   & 2013 & x86(32,64), ARM(32,64) & dynamic& emulation         & \boc{Big range of supported archs} \\ \midrule
+	QASAN      & 2020 & x86(32,64), ARM(32,64) & dynamic& emulation         & \boc{Big range of supported archs\\Memory sanitization support} \\ \midrule
+	DynamorIO  & 2002 & x86(32,64), ARM(32)    & dynamic& virtualization    & \boc{Many instr passes supported} \\ \midrule
+	PIN        & 2005 & x86(32,64)             & dynamic& JIT-recompilation & \boc{Low dynamic overhead (30\%)\\Closed-source, Intel proprietary} \\
 \bottomrule
 \end{tabular}
 \caption{Summary of some of the state-of-the-art binary rewriting projects.}
